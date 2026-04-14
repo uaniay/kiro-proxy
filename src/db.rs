@@ -19,6 +19,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     for schema in &[
         include_str!("../migrations/001_init.sql"),
         include_str!("../migrations/002_usage.sql"),
+        include_str!("../migrations/003_user_status.sql"),
     ] {
         for statement in schema.split(';') {
             let trimmed = statement.trim();
@@ -34,39 +35,39 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
 
 // ── Users ────────────────────────────────────────────────────
 
-pub async fn create_user(pool: &SqlitePool, email: &str, name: &str, password_hash: &str) -> Result<(String, String)> {
+pub async fn create_user(pool: &SqlitePool, email: &str, name: &str, password_hash: &str) -> Result<(String, String, String)> {
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
 
     // First user becomes admin
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
         .fetch_one(pool).await?;
-    let role = if count.0 == 0 { "admin" } else { "user" };
+    let (role, status) = if count.0 == 0 { ("admin", "active") } else { ("user", "pending") };
 
-    sqlx::query("INSERT INTO users (id, email, name, role, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-        .bind(&id).bind(email).bind(name).bind(role).bind(password_hash).bind(&now)
+    sqlx::query("INSERT INTO users (id, email, name, role, status, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .bind(&id).bind(email).bind(name).bind(role).bind(status).bind(password_hash).bind(&now)
         .execute(pool).await
         .context("Failed to create user")?;
 
-    Ok((id, role.to_string()))
+    Ok((id, role.to_string(), status.to_string()))
 }
 
 pub async fn get_user_by_email(pool: &SqlitePool, email: &str) -> Result<Option<UserRow>> {
-    let row = sqlx::query_as::<_, UserRow>("SELECT id, email, name, role, password_hash, created_at, last_login FROM users WHERE email = ?")
+    let row = sqlx::query_as::<_, UserRow>("SELECT id, email, name, role, status, password_hash, created_at, last_login FROM users WHERE email = ?")
         .bind(email)
         .fetch_optional(pool).await?;
     Ok(row)
 }
 
 pub async fn get_user_by_id(pool: &SqlitePool, id: &str) -> Result<Option<UserRow>> {
-    let row = sqlx::query_as::<_, UserRow>("SELECT id, email, name, role, password_hash, created_at, last_login FROM users WHERE id = ?")
+    let row = sqlx::query_as::<_, UserRow>("SELECT id, email, name, role, status, password_hash, created_at, last_login FROM users WHERE id = ?")
         .bind(id)
         .fetch_optional(pool).await?;
     Ok(row)
 }
 
 pub async fn list_users(pool: &SqlitePool) -> Result<Vec<UserRow>> {
-    let rows = sqlx::query_as::<_, UserRow>("SELECT id, email, name, role, password_hash, created_at, last_login FROM users ORDER BY created_at")
+    let rows = sqlx::query_as::<_, UserRow>("SELECT id, email, name, role, status, password_hash, created_at, last_login FROM users ORDER BY created_at")
         .fetch_all(pool).await?;
     Ok(rows)
 }
@@ -84,12 +85,31 @@ pub async fn update_last_login(pool: &SqlitePool, user_id: &str) -> Result<()> {
     Ok(())
 }
 
+pub async fn approve_user(pool: &SqlitePool, id: &str) -> Result<bool> {
+    let result = sqlx::query("UPDATE users SET status = 'active' WHERE id = ? AND status = 'pending'")
+        .bind(id).execute(pool).await?;
+    Ok(result.rows_affected() > 0)
+}
+
+pub async fn reject_user(pool: &SqlitePool, id: &str) -> Result<bool> {
+    let result = sqlx::query("UPDATE users SET status = 'rejected' WHERE id = ? AND status = 'pending'")
+        .bind(id).execute(pool).await?;
+    Ok(result.rows_affected() > 0)
+}
+
+pub async fn get_user_status(pool: &SqlitePool, user_id: &str) -> Result<Option<String>> {
+    let row: Option<(String,)> = sqlx::query_as("SELECT status FROM users WHERE id = ?")
+        .bind(user_id).fetch_optional(pool).await?;
+    Ok(row.map(|r| r.0))
+}
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct UserRow {
     pub id: String,
     pub email: String,
     pub name: String,
     pub role: String,
+    pub status: String,
     pub password_hash: String,
     pub created_at: String,
     pub last_login: Option<String>,
@@ -110,7 +130,7 @@ pub async fn create_session(pool: &SqlitePool, user_id: &str) -> Result<String> 
 }
 
 pub async fn get_session(pool: &SqlitePool, session_id: &str) -> Result<Option<SessionRow>> {
-    let row = sqlx::query_as::<_, SessionRow>("SELECT s.id, s.user_id, s.expires_at, u.email, u.role FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.id = ?")
+    let row = sqlx::query_as::<_, SessionRow>("SELECT s.id, s.user_id, s.expires_at, u.email, u.role, u.status FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.id = ?")
         .bind(session_id)
         .fetch_optional(pool).await?;
     Ok(row)
@@ -136,6 +156,7 @@ pub struct SessionRow {
     pub expires_at: String,
     pub email: String,
     pub role: String,
+    pub status: String,
 }
 
 // ── API Keys ─────────────────────────────────────────────────

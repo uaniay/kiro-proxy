@@ -25,6 +25,8 @@ export default function Admin() {
   const loadUsage = async () => { try { setUsage((await api.listUsage()).usage); } catch {} };
 
   const deleteUser = async (id: string) => { if (!confirm('Delete this user?')) return; await api.deleteUser(id); loadUsers(); };
+  const approveUser = async (id: string) => { await api.approveUser(id); loadUsers(); };
+  const rejectUser = async (id: string) => { if (!confirm('Reject this user?')) return; await api.rejectUser(id); loadUsers(); };
   const addPool = async () => {
     if (!newPool.label || !newPool.refresh_token) return;
     await api.addPool({ label: newPool.label, refresh_token: newPool.refresh_token, client_id: newPool.client_id || undefined, client_secret: newPool.client_secret || undefined, sso_region: newPool.sso_region || undefined });
@@ -51,6 +53,7 @@ export default function Admin() {
                 <TableHead>Email</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Last Login</TableHead>
                 <TableHead></TableHead>
               </TableRow>
@@ -61,8 +64,15 @@ export default function Admin() {
                   <TableCell className="font-medium">{u.email}</TableCell>
                   <TableCell className="text-muted-foreground">{u.name}</TableCell>
                   <TableCell><Badge variant={u.role === 'admin' ? 'default' : 'secondary'}>{u.role}</Badge></TableCell>
+                  <TableCell><Badge variant={u.status === 'active' ? 'default' : u.status === 'pending' ? 'outline' : 'destructive'}>{u.status}</Badge></TableCell>
                   <TableCell className="text-sm text-muted-foreground">{u.last_login ? new Date(u.last_login).toLocaleDateString() : 'Never'}</TableCell>
-                  <TableCell>{u.role !== 'admin' && <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteUser(u.id)}>Delete</Button>}</TableCell>
+                  <TableCell className="flex gap-1">
+                    {u.status === 'pending' && <>
+                      <Button variant="ghost" size="sm" className="text-green-600" onClick={() => approveUser(u.id)}>Approve</Button>
+                      <Button variant="ghost" size="sm" className="text-destructive" onClick={() => rejectUser(u.id)}>Reject</Button>
+                    </>}
+                    {u.role !== 'admin' && <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteUser(u.id)}>Delete</Button>}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

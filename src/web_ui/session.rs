@@ -15,6 +15,7 @@ pub struct SessionUser {
     pub user_id: String,
     pub email: String,
     pub role: String,
+    pub status: String,
 }
 
 pub async fn session_middleware(
@@ -56,6 +57,7 @@ pub async fn session_middleware(
         user_id: session.user_id,
         email: session.email,
         role: session.role,
+        status: session.status,
     });
 
     Ok(next.run(request).await)

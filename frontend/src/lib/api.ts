@@ -32,6 +32,8 @@ export const api = {
 
   listUsers: () => request('/admin/users'),
   deleteUser: (id: string) => request(`/admin/users/${id}`, { method: 'DELETE' }),
+  approveUser: (id: string) => request(`/admin/users/${id}/approve`, { method: 'POST' }),
+  rejectUser: (id: string) => request(`/admin/users/${id}/reject`, { method: 'POST' }),
   listPool: () => request('/admin/pool'),
   addPool: (data: { label: string; refresh_token: string; client_id?: string; client_secret?: string; sso_region?: string }) =>
     request('/admin/pool', { method: 'POST', body: JSON.stringify(data) }),

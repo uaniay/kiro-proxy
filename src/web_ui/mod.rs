@@ -29,6 +29,8 @@ pub fn web_ui_routes(state: AppState) -> Router {
         // Admin
         .route("/api/admin/users", get(admin::list_users_handler))
         .route("/api/admin/users/:id", delete(admin::delete_user_handler))
+        .route("/api/admin/users/:id/approve", post(admin::approve_user_handler))
+        .route("/api/admin/users/:id/reject", post(admin::reject_user_handler))
         .route("/api/admin/pool", get(admin::list_pool_handler))
         .route("/api/admin/pool", post(admin::add_pool_handler))
         .route("/api/admin/pool/:id", delete(admin::delete_pool_handler))

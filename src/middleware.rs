@@ -72,6 +72,16 @@ pub async fn auth_middleware(
         result
     };
 
+    // Check user status — only active users can use the API
+    let user_status = db::get_user_status(db_pool, &user_id).await
+        .map_err(|e| ApiError::Internal(e))?;
+    match user_status.as_deref() {
+        Some("active") => {}
+        Some("pending") => return Err(ApiError::Forbidden("Account pending admin approval".to_string())),
+        Some("rejected") => return Err(ApiError::Forbidden("Account has been rejected".to_string())),
+        _ => return Err(ApiError::AuthError("Invalid API key".to_string())),
+    }
+
     // 3. Resolve Kiro token for this user
     let default_region = state.config.read().unwrap_or_else(|p| p.into_inner()).kiro_region.clone();
 

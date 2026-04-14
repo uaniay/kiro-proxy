@@ -28,6 +28,7 @@ pub struct AuthResponse {
     pub user_id: String,
     pub email: String,
     pub role: String,
+    pub status: String,
 }
 
 pub async fn register_handler(
@@ -60,7 +61,7 @@ pub async fn register_handler(
     .map_err(|e| ApiError::Internal(anyhow::anyhow!("Password hashing failed: {}", e)))?
     .map_err(|e| ApiError::Internal(anyhow::anyhow!("Password hashing failed: {}", e)))?;
 
-    let (user_id, role) = db::create_user(db_pool, &body.email, &body.name, &password_hash).await
+    let (user_id, role, status) = db::create_user(db_pool, &body.email, &body.name, &password_hash).await
         .map_err(|e| ApiError::Internal(e))?;
 
     // Create session
@@ -74,7 +75,7 @@ pub async fn register_handler(
 
     Ok((
         [("set-cookie", cookie)],
-        Json(AuthResponse { user_id, email: body.email, role }),
+        Json(AuthResponse { user_id, email: body.email, role, status }),
     ))
 }
 
@@ -113,7 +114,7 @@ pub async fn login_handler(
 
     Ok((
         [("set-cookie", cookie)],
-        Json(AuthResponse { user_id: user.id, email: user.email, role: user.role }),
+        Json(AuthResponse { user_id: user.id, email: user.email, role: user.role, status: user.status }),
     ))
 }
 
@@ -157,6 +158,7 @@ pub async fn me_handler(
         "user_id": user.user_id,
         "email": user.email,
         "role": user.role,
+        "status": user.status,
     })))
 }
 

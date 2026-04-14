@@ -35,6 +35,7 @@ pub async fn list_users_handler(
             "email": u.email,
             "name": u.name,
             "role": u.role,
+            "status": u.status,
             "created_at": u.created_at,
             "last_login": u.last_login,
         })
@@ -63,6 +64,42 @@ pub async fn delete_user_handler(
 
     // Evict caches
     state.kiro_token_cache.remove(&user_id);
+
+    Ok(Json(json!({"status": "ok"})))
+}
+
+pub async fn approve_user_handler(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+    request: Request<axum::body::Body>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_admin(&request)?;
+    let db_pool = state.db.as_ref().ok_or_else(|| {
+        ApiError::ConfigError("Database not configured".to_string())
+    })?;
+
+    let updated = db::approve_user(db_pool, &user_id).await?;
+    if !updated {
+        return Err(ApiError::NotFound("User not found or not pending".to_string()));
+    }
+
+    Ok(Json(json!({"status": "ok"})))
+}
+
+pub async fn reject_user_handler(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+    request: Request<axum::body::Body>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_admin(&request)?;
+    let db_pool = state.db.as_ref().ok_or_else(|| {
+        ApiError::ConfigError("Database not configured".to_string())
+    })?;
+
+    let updated = db::reject_user(db_pool, &user_id).await?;
+    if !updated {
+        return Err(ApiError::NotFound("User not found or not pending".to_string()));
+    }
 
     Ok(Json(json!({"status": "ok"})))
 }

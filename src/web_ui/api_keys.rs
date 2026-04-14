@@ -36,6 +36,9 @@ pub async fn create_key_handler(
     let user = request.extensions().get::<SessionUser>()
         .ok_or_else(|| ApiError::AuthError("Not authenticated".to_string()))?
         .clone();
+    if user.status != "active" {
+        return Err(ApiError::Forbidden("Account not active. Admin approval required.".to_string()));
+    }
     let db_pool = state.db.as_ref().ok_or_else(|| {
         ApiError::ConfigError("Database not configured".to_string())
     })?;

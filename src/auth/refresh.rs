@@ -1,0 +1,86 @@
+use anyhow::{Context, Result};
+use chrono::{Duration, Utc};
+use reqwest::Client;
+
+use super::types::{AwsSsoOidcResponse, Credentials, TokenData};
+
+fn get_aws_sso_oidc_url(region: &str) -> String {
+    format!("https://oidc.{}.amazonaws.com/token", region)
+}
+
+pub async fn refresh_aws_sso_oidc(client: &Client, creds: &Credentials) -> Result<TokenData> {
+    tracing::info!("Refreshing Kiro token via AWS SSO OIDC...");
+
+    let client_id = creds
+        .client_id
+        .as_ref()
+        .context("Client ID is required for AWS SSO OIDC")?;
+    let client_secret = creds
+        .client_secret
+        .as_ref()
+        .context("Client secret is required for AWS SSO OIDC")?;
+
+    let sso_region = creds.sso_region.as_deref().unwrap_or(&creds.region);
+    let url = get_aws_sso_oidc_url(sso_region);
+
+    tracing::debug!(
+        "AWS SSO OIDC refresh: url={}, sso_region={}, api_region={}, client_id={}...",
+        url,
+        sso_region,
+        creds.region,
+        &client_id[..8.min(client_id.len())]
+    );
+
+    let body = serde_json::json!({
+        "grantType": "refresh_token",
+        "clientId": client_id,
+        "clientSecret": client_secret,
+        "refreshToken": &creds.refresh_token,
+    });
+
+    let response = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .context("Failed to send AWS SSO OIDC refresh request")?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let error_text = response.text().await.unwrap_or_default();
+        tracing::error!("AWS SSO OIDC refresh failed: status={}, body={}", status, error_text);
+
+        if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(&error_text) {
+            if let (Some(error_code), Some(error_desc)) = (
+                error_json.get("error").and_then(|v| v.as_str()),
+                error_json.get("error_description").and_then(|v| v.as_str()),
+            ) {
+                tracing::error!("AWS SSO OIDC error: error={}, description={}", error_code, error_desc);
+            }
+        }
+
+        anyhow::bail!("AWS SSO OIDC refresh failed: {} - {}", status, error_text);
+    }
+
+    let data: AwsSsoOidcResponse = response
+        .json()
+        .await
+        .context("Failed to parse AWS SSO OIDC refresh response")?;
+
+    if data.access_token.is_empty() {
+        anyhow::bail!("AWS SSO OIDC response does not contain accessToken");
+    }
+
+    let expires_in = data.expires_in.unwrap_or(3600);
+    let expires_at = Utc::now() + Duration::seconds(expires_in as i64 - 60);
+
+    tracing::info!("Token refreshed via AWS SSO OIDC, expires: {}", expires_at.to_rfc3339());
+
+    Ok(TokenData {
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+        expires_at,
+        profile_arn: None,
+    })
+}

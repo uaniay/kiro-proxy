@@ -1,0 +1,16 @@
+services:
+  kiro-proxy:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - PROXY_API_KEY=${PROXY_API_KEY}
+      - KIRO_REFRESH_TOKEN=${KIRO_REFRESH_TOKEN}
+      - KIRO_CLIENT_ID=${KIRO_CLIENT_ID}
+      - KIRO_CLIENT_SECRET=${KIRO_CLIENT_SECRET}
+      - KIRO_REGION=${KIRO_REGION:-us-east-1}
+      - KIRO_SSO_REGION=${KIRO_SSO_REGION}
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8000
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    restart: unless-stopped

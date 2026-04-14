@@ -1,0 +1,342 @@
+#![allow(dead_code)]
+
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+// ==================================================================================================
+// Models for /v1/models endpoint
+// ==================================================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenAIModel {
+    pub id: String,
+    pub object: String,
+    pub created: i64,
+    pub owned_by: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+impl OpenAIModel {
+    pub fn new(id: String) -> Self {
+        Self {
+            id,
+            object: "model".to_string(),
+            created: chrono::Utc::now().timestamp(),
+            owned_by: "anthropic".to_string(),
+            description: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelList {
+    pub object: String,
+    pub data: Vec<OpenAIModel>,
+}
+
+impl ModelList {
+    pub fn new(models: Vec<OpenAIModel>) -> Self {
+        Self {
+            object: "list".to_string(),
+            data: models,
+        }
+    }
+}
+
+// ==================================================================================================
+// Models for /v1/chat/completions endpoint
+// ==================================================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    pub function: FunctionCall,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionCall {
+    pub name: String,
+    pub arguments: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolFunction {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<serde_json::Value>,
+}
+
+/// OpenAI tool definition — either a function tool or a server-side tool.
+///
+/// Function tools have `type: "function"` and a `function` field.
+/// Server-side tools (e.g., `web_search_preview`) have a different type and no `function` field.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Tool {
+    /// Regular function tool
+    Function(FunctionTool),
+    /// Server-side/built-in tool (web_search_preview, etc.)
+    ServerSide(ServerSideTool),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionTool {
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    pub function: ToolFunction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerSideTool {
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    /// All other fields vary by tool type
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatCompletionRequest {
+    pub model: String,
+    pub messages: Vec<ChatMessage>,
+    #[serde(default)]
+    pub stream: bool,
+
+    // Generation parameters
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub n: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_completion_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
+
+    // Tools (function calling)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<Tool>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<serde_json::Value>,
+
+    // Compatibility fields (ignored but accepted)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_options: Option<HashMap<String, serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logit_bias: Option<HashMap<String, f32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logprobs: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_logprobs: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parallel_tool_calls: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<serde_json::Value>,
+}
+
+// ==================================================================================================
+// Models for responses
+// ==================================================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatCompletionChoice {
+    pub index: i32,
+    pub message: ChatMessage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logprobs: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptTokensDetails {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cached_tokens: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatCompletionUsage {
+    pub prompt_tokens: i32,
+    pub completion_tokens: i32,
+    pub total_tokens: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credits_used: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatCompletionResponse {
+    pub id: String,
+    pub object: String,
+    pub created: i64,
+    pub model: String,
+    pub choices: Vec<ChatCompletionChoice>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<ChatCompletionUsage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_fingerprint: Option<String>,
+}
+
+impl ChatCompletionResponse {
+    pub fn new(id: String, model: String, choices: Vec<ChatCompletionChoice>) -> Self {
+        Self {
+            id,
+            object: "chat.completion".to_string(),
+            created: chrono::Utc::now().timestamp(),
+            model,
+            choices,
+            usage: None,
+            system_fingerprint: None,
+        }
+    }
+}
+
+// ==================================================================================================
+// Models for streaming responses
+// ==================================================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatCompletionChunkDelta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCallDelta>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallDelta {
+    pub index: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "type")]
+    pub tool_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub function: Option<FunctionCallDelta>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionCallDelta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatCompletionChunkChoice {
+    pub index: i32,
+    pub delta: ChatCompletionChunkDelta,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logprobs: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatCompletionChunk {
+    pub id: String,
+    pub object: String,
+    pub created: i64,
+    pub model: String,
+    pub choices: Vec<ChatCompletionChunkChoice>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<ChatCompletionUsage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_fingerprint: Option<String>,
+}
+
+impl ChatCompletionChunk {
+    pub fn new(id: String, model: String, choices: Vec<ChatCompletionChunkChoice>) -> Self {
+        Self {
+            id,
+            object: "chat.completion.chunk".to_string(),
+            created: chrono::Utc::now().timestamp(),
+            model,
+            choices,
+            usage: None,
+            system_fingerprint: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_usage_with_prompt_tokens_details() {
+        let usage = ChatCompletionUsage {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            credits_used: None,
+            prompt_tokens_details: Some(PromptTokensDetails {
+                cached_tokens: Some(80),
+            }),
+        };
+        let json = serde_json::to_value(&usage).unwrap();
+        assert_eq!(json["prompt_tokens_details"]["cached_tokens"], 80);
+    }
+
+    #[test]
+    fn test_usage_without_prompt_tokens_details() {
+        let json = json!({
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150
+        });
+        let usage: ChatCompletionUsage = serde_json::from_value(json).unwrap();
+        assert!(usage.prompt_tokens_details.is_none());
+    }
+
+    #[test]
+    fn test_usage_prompt_tokens_details_skip_serializing_none() {
+        let usage = ChatCompletionUsage {
+            prompt_tokens: 10,
+            completion_tokens: 5,
+            total_tokens: 15,
+            credits_used: None,
+            prompt_tokens_details: None,
+        };
+        let json = serde_json::to_value(&usage).unwrap();
+        assert!(json.get("prompt_tokens_details").is_none());
+    }
+}

@@ -2,7 +2,7 @@ services:
   kiro-proxy:
     build: .
     ports:
-      - "8000:8000"
+      - "9199:9199"
     environment:
       - PROXY_API_KEY=${PROXY_API_KEY}
       - DATABASE_URL=sqlite:/data/kiro-proxy.db?mode=rwc
@@ -12,7 +12,7 @@ services:
       - KIRO_REGION=${KIRO_REGION:-us-east-1}
       - KIRO_SSO_REGION=${KIRO_SSO_REGION}
       - SERVER_HOST=0.0.0.0
-      - SERVER_PORT=8000
+      - SERVER_PORT=9199
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - kiro-data:/data

@@ -7,7 +7,7 @@ export default defineConfig({
   base: '/_ui/',
   server: {
     proxy: {
-      '/_ui/api': 'http://localhost:8000',
+      '/_ui/api': 'http://localhost:9199',
     },
   },
   build: {

@@ -85,7 +85,7 @@ impl Config {
             server_port: std::env::var("SERVER_PORT")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(8000),
+                .unwrap_or(9199),
             proxy_api_key,
             database_url: std::env::var("DATABASE_URL").ok().filter(|s| !s.is_empty()),
             kiro_region: std::env::var("KIRO_REGION").unwrap_or_else(|_| "us-east-1".to_string()),

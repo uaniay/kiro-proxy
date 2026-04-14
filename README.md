@@ -33,7 +33,7 @@ cp .env.example .env
 # DATABASE_URL=sqlite:data/kiro-proxy.db?mode=rwc
 cd frontend && npm install && npm run build && cd ..
 cargo run
-# Open http://localhost:8000/_ui/ to register and manage users
+# Open http://localhost:9199/_ui/ to register and manage users
 ```
 
 ## Docker
@@ -42,7 +42,7 @@ cargo run
 cp .env.example .env
 # Edit .env
 docker compose up -d
-# Web UI at http://localhost:8000/_ui/
+# Web UI at http://localhost:9199/_ui/
 ```
 
 ## Configuration
@@ -57,7 +57,7 @@ docker compose up -d
 | `KIRO_REGION` | No | `us-east-1` | AWS region for Kiro API |
 | `KIRO_SSO_REGION` | No | same as KIRO_REGION | AWS region for SSO OIDC endpoint |
 | `SERVER_HOST` | No | `0.0.0.0` | Listen address |
-| `SERVER_PORT` | No | `8000` | Listen port |
+| `SERVER_PORT` | No | `9199` | Listen port |
 | `LOG_LEVEL` | No | `info` | Log level (trace/debug/info/warn/error) |
 
 ## Multi-user Mode

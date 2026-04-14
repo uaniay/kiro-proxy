@@ -24,5 +24,5 @@ RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/
 WORKDIR /app
 COPY --from=builder /app/target/release/kiro-proxy /usr/local/bin/
 COPY --from=frontend /app/frontend/dist /app/frontend/dist
-EXPOSE 8000
+EXPOSE 9199
 CMD ["kiro-proxy"]

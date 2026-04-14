@@ -4,15 +4,19 @@ use std::sync::{Arc, RwLock};
 mod auth;
 mod config;
 mod converters;
+mod db;
 mod error;
 mod http_client;
 mod middleware;
 mod models;
+mod pool;
 mod routes;
 mod streaming;
+mod tasks;
 mod thinking_parser;
 mod tokenizer;
 mod truncation;
+mod web_ui;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -63,18 +67,52 @@ async fn main() -> Result<()> {
         result
     };
 
+    // Database (optional — enables multi-user mode)
+    let db_pool = if let Some(ref url) = config.database_url {
+        tracing::info!("Multi-user mode: connecting to {}", url);
+        let pool = db::create_pool(url).await?;
+        db::run_migrations(&pool).await?;
+        Some(pool)
+    } else {
+        tracing::info!("Proxy-only mode (no DATABASE_URL)");
+        None
+    };
+
     let state = routes::AppState {
         proxy_api_key_hash,
         auth_manager,
         http_client,
         config: Arc::new(RwLock::new(config.clone())),
+        db: db_pool,
+        api_key_cache: Arc::new(dashmap::DashMap::new()),
+        kiro_token_cache: Arc::new(dashmap::DashMap::new()),
+        pool_scheduler: Arc::new(pool::PoolScheduler::new()),
     };
 
     // Router
-    let app = routes::health_routes()
+    let mut app = routes::health_routes()
         .merge(routes::openai_routes(state.clone()))
-        .merge(routes::anthropic_routes(state))
-        .layer(middleware::cors_layer());
+        .merge(routes::anthropic_routes(state.clone()));
+
+    // Web UI routes (only when DB is configured)
+    if state.db.is_some() {
+        app = app.merge(web_ui::web_ui_routes(state.clone()));
+        // Serve frontend static files at /_ui/
+        let frontend_dir = std::path::PathBuf::from("frontend/dist");
+        if frontend_dir.exists() {
+            use tower_http::services::{ServeDir, ServeFile};
+            let spa_fallback = ServeFile::new(frontend_dir.join("index.html"));
+            let serve = ServeDir::new(&frontend_dir).fallback(spa_fallback);
+            app = app.nest_service("/_ui", serve);
+            tracing::info!("Serving frontend from {}", frontend_dir.display());
+        } else {
+            tracing::warn!("Frontend not found at {}. Run `cd frontend && npm run build`", frontend_dir.display());
+        }
+        // Start background tasks
+        tasks::spawn_background_tasks(state.db.clone().unwrap());
+    }
+
+    let app = app.layer(middleware::cors_layer());
 
     let addr = format!("{}:{}", config.server_host, config.server_port);
     tracing::info!("Listening on {}", addr);

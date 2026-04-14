@@ -5,6 +5,7 @@ services:
       - "8000:8000"
     environment:
       - PROXY_API_KEY=${PROXY_API_KEY}
+      - DATABASE_URL=sqlite:/data/kiro-proxy.db?mode=rwc
       - KIRO_REFRESH_TOKEN=${KIRO_REFRESH_TOKEN}
       - KIRO_CLIENT_ID=${KIRO_CLIENT_ID}
       - KIRO_CLIENT_SECRET=${KIRO_CLIENT_SECRET}
@@ -13,4 +14,9 @@ services:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8000
       - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - kiro-data:/data
     restart: unless-stopped
+
+volumes:
+  kiro-data:

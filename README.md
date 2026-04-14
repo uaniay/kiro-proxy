@@ -1,6 +1,6 @@
 # kiro-proxy
 
-Lightweight Kiro API proxy with OpenAI and Anthropic compatible endpoints.
+Lightweight Kiro API proxy with OpenAI and Anthropic compatible endpoints. Supports single-user proxy mode and multi-user mode with Web UI, per-user Kiro token binding, and admin token pool load balancing.
 
 ## Features
 
@@ -8,18 +8,32 @@ Lightweight Kiro API proxy with OpenAI and Anthropic compatible endpoints.
 - Anthropic compatible: `POST /v1/messages`
 - Streaming (SSE) and non-streaming responses
 - AWS SSO device code flow + pre-configured refresh token authentication
+- Multi-user mode with Web UI (SQLite, React)
+- Per-user API keys and Kiro token binding
+- Admin token pool with round-robin load balancing
 - Automatic token refresh with graceful degradation
 - Exponential backoff retry on 429/5xx
 - Truncation recovery for large tool call responses
-- Thinking/reasoning block extraction (fake reasoning support)
-- Single binary, no database required
 
 ## Quick Start
 
+### Proxy-only mode (single user)
+
 ```bash
 cp .env.example .env
-# Edit .env with your PROXY_API_KEY and Kiro credentials
+# Set PROXY_API_KEY and optionally KIRO_REFRESH_TOKEN
 cargo run
+```
+
+### Multi-user mode
+
+```bash
+cp .env.example .env
+# Set PROXY_API_KEY and DATABASE_URL
+# DATABASE_URL=sqlite:data/kiro-proxy.db?mode=rwc
+cd frontend && npm install && npm run build && cd ..
+cargo run
+# Open http://localhost:8000/_ui/ to register and manage users
 ```
 
 ## Docker
@@ -28,14 +42,16 @@ cargo run
 cp .env.example .env
 # Edit .env
 docker compose up -d
+# Web UI at http://localhost:8000/_ui/
 ```
 
 ## Configuration
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `PROXY_API_KEY` | Yes | — | API key for proxy authentication (min 16 chars) |
-| `KIRO_REFRESH_TOKEN` | No | — | AWS SSO refresh token |
+| `PROXY_API_KEY` | Yes | — | Shared API key for proxy auth (min 16 chars) |
+| `DATABASE_URL` | No | — | SQLite URL to enable multi-user mode |
+| `KIRO_REFRESH_TOKEN` | No | — | AWS SSO refresh token (proxy-only mode) |
 | `KIRO_CLIENT_ID` | No | — | AWS SSO OAuth client ID |
 | `KIRO_CLIENT_SECRET` | No | — | AWS SSO OAuth client secret |
 | `KIRO_REGION` | No | `us-east-1` | AWS region for Kiro API |
@@ -44,21 +60,15 @@ docker compose up -d
 | `SERVER_PORT` | No | `8000` | Listen port |
 | `LOG_LEVEL` | No | `info` | Log level (trace/debug/info/warn/error) |
 
-## Usage
+## Multi-user Mode
 
-```bash
-# OpenAI format
-curl http://localhost:8000/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_PROXY_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"claude-sonnet-4","messages":[{"role":"user","content":"Hello"}],"stream":false}'
+When `DATABASE_URL` is set, the proxy enables:
 
-# Anthropic format
-curl http://localhost:8000/v1/messages \
-  -H "Authorization: Bearer YOUR_PROXY_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"claude-sonnet-4","messages":[{"role":"user","content":"Hello"}],"max_tokens":1024,"stream":false}'
-```
+- Web UI at `/_ui/` for user registration, login, API key management, and Kiro token binding
+- First registered user becomes admin
+- Users can bind their own Kiro token via AWS SSO device code flow
+- Admin can manage a token pool for users without their own token
+- Requests are routed: user token > admin pool (round-robin) > global PROXY token
 
 ## License
 

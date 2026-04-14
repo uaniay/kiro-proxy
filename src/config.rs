@@ -24,6 +24,9 @@ pub struct Config {
     // Proxy auth
     pub proxy_api_key: String,
 
+    // Database (optional — enables multi-user mode)
+    pub database_url: Option<String>,
+
     // Kiro
     pub kiro_region: String,
     pub kiro_sso_region: Option<String>,
@@ -84,6 +87,7 @@ impl Config {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(8000),
             proxy_api_key,
+            database_url: std::env::var("DATABASE_URL").ok().filter(|s| !s.is_empty()),
             kiro_region: std::env::var("KIRO_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
             kiro_sso_region: std::env::var("KIRO_SSO_REGION").ok().filter(|s| !s.is_empty()),
             kiro_refresh_token: std::env::var("KIRO_REFRESH_TOKEN").ok().filter(|s| !s.is_empty()),

@@ -8,7 +8,7 @@ description = "Lightweight Kiro API proxy - OpenAI and Anthropic compatible"
 # Web framework
 axum = { version = "0.7", features = ["macros"] }
 tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
@@ -50,6 +50,18 @@ urlencoding = "2"
 # Async utilities
 async-trait = "0.1"
 async-stream = "0.3"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }
+
+# Password hashing
+argon2 = "0.5"
+
+# Concurrent caches
+dashmap = "6"
+
+# Cookie support
+axum-extra = { version = "0.7", features = ["cookie"] }
 
 [profile.release]
 opt-level = 3

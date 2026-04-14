@@ -25,6 +25,18 @@ pub enum ApiError {
     #[allow(dead_code)]
     NotFound(String),
 
+    #[error("Kiro token required")]
+    #[allow(dead_code)]
+    KiroTokenRequired,
+
+    #[error("Invalid credentials")]
+    #[allow(dead_code)]
+    InvalidCredentials,
+
+    #[error("Forbidden: {0}")]
+    #[allow(dead_code)]
+    Forbidden(String),
+
     #[error("Internal error: {0}")]
     Internal(#[from] anyhow::Error),
 }
@@ -41,6 +53,17 @@ impl IntoResponse for ApiError {
             ApiError::ConfigError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, "config_error", msg),
             ApiError::ValidationError(msg) => (StatusCode::BAD_REQUEST, "validation_error", msg),
             ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, "not_found", msg),
+            ApiError::KiroTokenRequired => (
+                StatusCode::FORBIDDEN,
+                "kiro_token_required",
+                "No Kiro token available. Bind your token at /_ui/ or contact admin.".to_string(),
+            ),
+            ApiError::InvalidCredentials => (
+                StatusCode::UNAUTHORIZED,
+                "invalid_credentials",
+                "Invalid credentials".to_string(),
+            ),
+            ApiError::Forbidden(msg) => (StatusCode::FORBIDDEN, "forbidden", msg),
             ApiError::Internal(err) => {
                 tracing::error!("Internal error: {:?}", err);
                 (

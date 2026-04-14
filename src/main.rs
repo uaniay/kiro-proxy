@@ -87,6 +87,7 @@ async fn main() -> Result<()> {
         api_key_cache: Arc::new(dashmap::DashMap::new()),
         kiro_token_cache: Arc::new(dashmap::DashMap::new()),
         pool_scheduler: Arc::new(pool::PoolScheduler::new()),
+        global_kiro_enabled: Arc::new(std::sync::atomic::AtomicBool::new(true)),
     };
 
     // Router

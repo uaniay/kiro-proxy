@@ -20,6 +20,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         include_str!("../migrations/001_init.sql"),
         include_str!("../migrations/002_usage.sql"),
         include_str!("../migrations/003_user_status.sql"),
+        include_str!("../migrations/004_token_enabled.sql"),
     ] {
         for statement in schema.split(';') {
             let trimmed = statement.trim();
@@ -236,7 +237,7 @@ pub async fn upsert_kiro_token(
 
 pub async fn get_kiro_token(pool: &SqlitePool, user_id: &str) -> Result<Option<KiroTokenRow>> {
     let row = sqlx::query_as::<_, KiroTokenRow>(
-        "SELECT user_id, refresh_token, access_token, token_expiry, client_id, client_secret, sso_region, sso_start_url, updated_at FROM user_kiro_tokens WHERE user_id = ?"
+        "SELECT user_id, refresh_token, access_token, token_expiry, client_id, client_secret, sso_region, sso_start_url, enabled, updated_at FROM user_kiro_tokens WHERE user_id = ?"
     ).bind(user_id).fetch_optional(pool).await?;
     Ok(row)
 }
@@ -249,7 +250,7 @@ pub async fn delete_kiro_token(pool: &SqlitePool, user_id: &str) -> Result<bool>
 
 pub async fn get_expiring_kiro_tokens(pool: &SqlitePool, threshold: &str) -> Result<Vec<KiroTokenRow>> {
     let rows = sqlx::query_as::<_, KiroTokenRow>(
-        "SELECT user_id, refresh_token, access_token, token_expiry, client_id, client_secret, sso_region, sso_start_url, updated_at \
+        "SELECT user_id, refresh_token, access_token, token_expiry, client_id, client_secret, sso_region, sso_start_url, enabled, updated_at \
          FROM user_kiro_tokens WHERE token_expiry IS NOT NULL AND token_expiry < ?"
     ).bind(threshold).fetch_all(pool).await?;
     Ok(rows)
@@ -276,6 +277,21 @@ pub async fn mark_kiro_token_expired(pool: &SqlitePool, user_id: &str) -> Result
     Ok(())
 }
 
+pub async fn list_all_kiro_tokens(pool: &SqlitePool) -> Result<Vec<KiroTokenWithUser>> {
+    let rows = sqlx::query_as::<_, KiroTokenWithUser>(
+        "SELECT t.user_id, u.email, u.name, t.sso_region, t.enabled, \
+         (t.access_token IS NOT NULL) as has_token, t.updated_at \
+         FROM user_kiro_tokens t JOIN users u ON t.user_id = u.id ORDER BY u.email"
+    ).fetch_all(pool).await?;
+    Ok(rows)
+}
+
+pub async fn toggle_kiro_token(pool: &SqlitePool, user_id: &str, enabled: bool) -> Result<bool> {
+    let result = sqlx::query("UPDATE user_kiro_tokens SET enabled = ? WHERE user_id = ?")
+        .bind(enabled as i32).bind(user_id).execute(pool).await?;
+    Ok(result.rows_affected() > 0)
+}
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct KiroTokenRow {
     pub user_id: String,
@@ -286,6 +302,19 @@ pub struct KiroTokenRow {
     pub client_secret: Option<String>,
     pub sso_region: Option<String>,
     pub sso_start_url: Option<String>,
+    pub enabled: bool,
+    pub updated_at: String,
+}
+
+/// Kiro token with user info, for admin listing.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct KiroTokenWithUser {
+    pub user_id: String,
+    pub email: String,
+    pub name: String,
+    pub sso_region: Option<String>,
+    pub enabled: bool,
+    pub has_token: bool,
     pub updated_at: String,
 }
 

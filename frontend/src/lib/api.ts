@@ -41,4 +41,7 @@ export const api = {
   togglePool: (id: string, enabled: boolean) =>
     request(`/admin/pool/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
   listUsage: () => request('/admin/usage'),
+  listAccounts: () => request('/admin/accounts'),
+  toggleAccount: (id: string, type: string, enabled: boolean) =>
+    request(`/admin/accounts/${id}`, { method: 'PATCH', body: JSON.stringify({ type, enabled }) }),
 };

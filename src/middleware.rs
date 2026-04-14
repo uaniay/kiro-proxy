@@ -28,6 +28,10 @@ pub async fn auth_middleware(
     // 1. Check PROXY_API_KEY (backward compat, always works)
     let incoming_hash: [u8; 32] = Sha256::digest(raw_key.as_bytes()).into();
     if bool::from(incoming_hash.ct_eq(&state.proxy_api_key_hash)) {
+        // Check if global kiro is enabled
+        if !state.global_kiro_enabled.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(ApiError::Forbidden("Global Kiro account is disabled".to_string()));
+        }
         // Proxy-only path: use global AuthManager
         let (access_token, region) = {
             let auth = state.auth_manager.read().await;
@@ -109,24 +113,26 @@ pub async fn auth_middleware(
     if let Some(kiro_row) = db::get_kiro_token(db_pool, &user_id).await
         .map_err(|e| ApiError::Internal(e))?
     {
-        if let Some(ref access_token) = kiro_row.access_token {
-            let region = kiro_row.sso_region.as_deref().unwrap_or(&default_region).to_string();
+        if kiro_row.enabled {
+            if let Some(ref access_token) = kiro_row.access_token {
+                let region = kiro_row.sso_region.as_deref().unwrap_or(&default_region).to_string();
 
-            // Cache it
-            if state.kiro_token_cache.len() < 10_000 {
-                state.kiro_token_cache.insert(
-                    user_id.clone(),
-                    (access_token.clone(), region.clone(), std::time::Instant::now()),
-                );
+                // Cache it
+                if state.kiro_token_cache.len() < 10_000 {
+                    state.kiro_token_cache.insert(
+                        user_id.clone(),
+                        (access_token.clone(), region.clone(), std::time::Instant::now()),
+                    );
+                }
+
+                request.extensions_mut().insert(KiroCreds {
+                    user_id: Some(user_id),
+                    api_key_id: Some(key_id.clone()),
+                    access_token: access_token.clone(),
+                    region,
+                });
+                return Ok(next.run(request).await);
             }
-
-            request.extensions_mut().insert(KiroCreds {
-                user_id: Some(user_id),
-                api_key_id: Some(key_id.clone()),
-                access_token: access_token.clone(),
-                region,
-            });
-            return Ok(next.run(request).await);
         }
     }
 
@@ -141,17 +147,19 @@ pub async fn auth_middleware(
         return Ok(next.run(request).await);
     }
 
-    // 5. Last resort: try global AuthManager
-    let auth = state.auth_manager.read().await;
-    if let Ok(token) = auth.get_access_token().await {
-        let region = auth.get_region().await;
-        request.extensions_mut().insert(KiroCreds {
-            user_id: Some(user_id),
-            api_key_id: Some(key_id),
-            access_token: token,
-            region,
-        });
-        return Ok(next.run(request).await);
+    // 5. Last resort: try global AuthManager (if enabled)
+    if state.global_kiro_enabled.load(std::sync::atomic::Ordering::Relaxed) {
+        let auth = state.auth_manager.read().await;
+        if let Ok(token) = auth.get_access_token().await {
+            let region = auth.get_region().await;
+            request.extensions_mut().insert(KiroCreds {
+                user_id: Some(user_id),
+                api_key_id: Some(key_id),
+                access_token: token,
+                region,
+            });
+            return Ok(next.run(request).await);
+        }
     }
 
     Err(ApiError::KiroTokenRequired)

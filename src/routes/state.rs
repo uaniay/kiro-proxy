@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::RwLock;
+use std::sync::atomic::AtomicBool;
 
 use dashmap::DashMap;
 use uuid::Uuid;
@@ -33,4 +34,6 @@ pub struct AppState {
     pub kiro_token_cache: Arc<DashMap<String, (String, String, std::time::Instant)>>,
     /// Pool scheduler for admin token pool
     pub pool_scheduler: Arc<PoolScheduler>,
+    /// Whether the global Kiro account (env var) is enabled
+    pub global_kiro_enabled: Arc<AtomicBool>,
 }

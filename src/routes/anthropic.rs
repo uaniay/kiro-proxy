@@ -113,6 +113,19 @@ pub(crate) async fn anthropic_messages_handler(
         )
         .await?;
 
+        // Record usage
+        if let (Some(ref db), Some(ref key_id), Some(ref uid)) = (&state.db, &creds.api_key_id, &creds.user_id) {
+            let in_tok = body.get("usage").and_then(|u| u.get("input_tokens")).and_then(|v| v.as_i64()).unwrap_or(input_tokens as i64);
+            let out_tok = body.get("usage").and_then(|u| u.get("output_tokens")).and_then(|v| v.as_i64()).unwrap_or(0);
+            let model = request.model.clone();
+            let db = db.clone();
+            let key_id = key_id.clone();
+            let uid = uid.clone();
+            tokio::spawn(async move {
+                let _ = crate::db::record_usage(&db, &key_id, &uid, &model, in_tok, out_tok).await;
+            });
+        }
+
         Ok(Json(body).into_response())
     }
 }

@@ -41,6 +41,7 @@ pub async fn auth_middleware(
 
         request.extensions_mut().insert(KiroCreds {
             user_id: None,
+            api_key_id: None,
             access_token,
             region,
         });
@@ -56,7 +57,7 @@ pub async fn auth_middleware(
 
     // Check cache first
     let cached = state.api_key_cache.get(&key_hash).map(|v| v.clone());
-    let (_key_id, user_id) = if let Some((key_id, user_id)) = cached {
+    let (key_id, user_id) = if let Some((key_id, user_id)) = cached {
         (key_id, user_id)
     } else {
         // DB fallback
@@ -87,6 +88,7 @@ pub async fn auth_middleware(
     if let Some((access_token, region)) = cached_token {
         request.extensions_mut().insert(KiroCreds {
             user_id: Some(user_id),
+            api_key_id: Some(key_id.clone()),
             access_token,
             region,
         });
@@ -110,6 +112,7 @@ pub async fn auth_middleware(
 
             request.extensions_mut().insert(KiroCreds {
                 user_id: Some(user_id),
+                api_key_id: Some(key_id.clone()),
                 access_token: access_token.clone(),
                 region,
             });
@@ -121,6 +124,7 @@ pub async fn auth_middleware(
     if let Some(pool_token) = state.pool_scheduler.next_token(db_pool, &default_region).await {
         request.extensions_mut().insert(KiroCreds {
             user_id: Some(user_id),
+            api_key_id: Some(key_id.clone()),
             access_token: pool_token.access_token,
             region: pool_token.region,
         });
@@ -133,6 +137,7 @@ pub async fn auth_middleware(
         let region = auth.get_region().await;
         request.extensions_mut().insert(KiroCreds {
             user_id: Some(user_id),
+            api_key_id: Some(key_id),
             access_token: token,
             region,
         });

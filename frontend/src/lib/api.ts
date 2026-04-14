@@ -38,4 +38,5 @@ export const api = {
   deletePool: (id: string) => request(`/admin/pool/${id}`, { method: 'DELETE' }),
   togglePool: (id: string, enabled: boolean) =>
     request(`/admin/pool/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
+  listUsage: () => request('/admin/usage'),
 };

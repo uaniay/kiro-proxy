@@ -33,6 +33,7 @@ pub fn web_ui_routes(state: AppState) -> Router {
         .route("/api/admin/pool", post(admin::add_pool_handler))
         .route("/api/admin/pool/:id", delete(admin::delete_pool_handler))
         .route("/api/admin/pool/:id", patch(admin::toggle_pool_handler))
+        .route("/api/admin/usage", get(admin::usage_handler))
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             session::session_middleware,

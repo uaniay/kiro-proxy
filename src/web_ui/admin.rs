@@ -169,3 +169,16 @@ pub async fn toggle_pool_handler(
 
     Ok(Json(json!({"status": "ok", "enabled": body.enabled})))
 }
+
+pub async fn usage_handler(
+    State(state): State<AppState>,
+    request: Request<axum::body::Body>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_admin(&request)?;
+    let db_pool = state.db.as_ref().ok_or_else(|| {
+        ApiError::ConfigError("Database not configured".to_string())
+    })?;
+
+    let stats = db::get_all_usage_stats(db_pool).await?;
+    Ok(Json(json!({ "usage": stats })))
+}

@@ -16,12 +16,16 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     sqlx::query("PRAGMA journal_mode=WAL").execute(pool).await?;
     sqlx::query("PRAGMA foreign_keys=ON").execute(pool).await?;
 
-    let schema = include_str!("../migrations/001_init.sql");
-    for statement in schema.split(';') {
-        let trimmed = statement.trim();
-        if !trimmed.is_empty() {
-            sqlx::query(trimmed).execute(pool).await
-                .with_context(|| format!("Failed to execute migration: {}", &trimmed[..trimmed.len().min(80)]))?;
+    for schema in &[
+        include_str!("../migrations/001_init.sql"),
+        include_str!("../migrations/002_usage.sql"),
+    ] {
+        for statement in schema.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() {
+                sqlx::query(trimmed).execute(pool).await
+                    .with_context(|| format!("Failed to execute migration: {}", &trimmed[..trimmed.len().min(80)]))?;
+            }
         }
     }
     tracing::info!("Database migrations completed");
@@ -358,4 +362,62 @@ pub struct PoolEntryRow {
     pub enabled: bool,
     pub last_used: Option<String>,
     pub created_at: String,
+}
+
+// ── Usage Tracking ───────────────────────────────────────────
+
+pub async fn record_usage(
+    pool: &SqlitePool, api_key_id: &str, user_id: &str,
+    model: &str, input_tokens: i64, output_tokens: i64,
+) -> Result<()> {
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO usage_logs (id, api_key_id, user_id, model, input_tokens, output_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    )
+    .bind(&id).bind(api_key_id).bind(user_id).bind(model)
+    .bind(input_tokens).bind(output_tokens).bind(&now)
+    .execute(pool).await?;
+
+    sqlx::query("UPDATE api_keys SET last_used = ? WHERE id = ?")
+        .bind(&now).bind(api_key_id).execute(pool).await?;
+
+    Ok(())
+}
+
+pub async fn get_key_usage_stats(pool: &SqlitePool, user_id: &str) -> Result<Vec<KeyUsageStats>> {
+    let rows = sqlx::query_as::<_, KeyUsageStats>(
+        "SELECT k.id, k.key_prefix, k.name, k.last_used, k.created_at, k.user_id, \
+         COALESCE(SUM(u.input_tokens), 0) as total_input_tokens, \
+         COALESCE(SUM(u.output_tokens), 0) as total_output_tokens, \
+         COUNT(u.id) as request_count \
+         FROM api_keys k LEFT JOIN usage_logs u ON k.id = u.api_key_id \
+         WHERE k.user_id = ? GROUP BY k.id ORDER BY k.created_at"
+    ).bind(user_id).fetch_all(pool).await?;
+    Ok(rows)
+}
+
+pub async fn get_all_usage_stats(pool: &SqlitePool) -> Result<Vec<KeyUsageStats>> {
+    let rows = sqlx::query_as::<_, KeyUsageStats>(
+        "SELECT k.id, k.key_prefix, k.name, k.last_used, k.created_at, k.user_id, \
+         COALESCE(SUM(u.input_tokens), 0) as total_input_tokens, \
+         COALESCE(SUM(u.output_tokens), 0) as total_output_tokens, \
+         COUNT(u.id) as request_count \
+         FROM api_keys k LEFT JOIN usage_logs u ON k.id = u.api_key_id \
+         GROUP BY k.id ORDER BY k.created_at"
+    ).fetch_all(pool).await?;
+    Ok(rows)
+}
+
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+pub struct KeyUsageStats {
+    pub id: String,
+    pub key_prefix: String,
+    pub name: String,
+    pub last_used: Option<String>,
+    pub created_at: String,
+    pub user_id: String,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub request_count: i64,
 }

@@ -25,7 +25,7 @@ pub async fn list_keys_handler(
         ApiError::ConfigError("Database not configured".to_string())
     })?;
 
-    let keys = db::list_api_keys(db_pool, &user.user_id).await?;
+    let keys = db::get_key_usage_stats(db_pool, &user.user_id).await?;
     Ok(Json(json!({ "keys": keys })))
 }
 

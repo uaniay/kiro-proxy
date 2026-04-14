@@ -13,6 +13,7 @@ use crate::pool::PoolScheduler;
 #[derive(Debug, Clone)]
 pub struct KiroCreds {
     pub user_id: Option<String>,
+    pub api_key_id: Option<String>,
     pub access_token: String,
     pub region: String,
 }

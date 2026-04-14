@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Build backend
-FROM rust:1.87-slim AS builder
+FROM rust:1.94-slim AS builder
 WORKDIR /app
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 COPY Cargo.toml Cargo.lock* ./
@@ -24,5 +24,10 @@ RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/
 WORKDIR /app
 COPY --from=builder /app/target/release/kiro-proxy /usr/local/bin/
 COPY --from=frontend /app/frontend/dist /app/frontend/dist
+
+ENV SERVER_HOST=0.0.0.0
+ENV SERVER_PORT=9199
+
+VOLUME /data
 EXPOSE 9199
 CMD ["kiro-proxy"]

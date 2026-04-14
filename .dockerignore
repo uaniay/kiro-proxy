@@ -1,0 +1,9 @@
+target/
+frontend/node_modules/
+frontend/dist/
+data/
+.git/
+.gitignore
+.env
+*.md
+.claude/

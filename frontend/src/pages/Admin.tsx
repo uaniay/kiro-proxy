@@ -20,6 +20,7 @@ export default function Admin() {
   const [pool, setPool] = useState<any[]>([]);
   const [usage, setUsage] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [newPool, setNewPool] = useState({ label: '', sso_region: 'us-east-1' });
   const [poolDevice, setPoolDevice] = useState<{ pool_id: string; device_code: string; user_code: string; verification_uri: string; verification_uri_complete?: string } | null>(null);
   const [poolPolling, setPoolPolling] = useState(false);
@@ -76,6 +77,19 @@ export default function Admin() {
     await api.toggleAccount(id, type, !enabled);
     loadAccounts();
     if (type === 'pool') loadPool();
+  };
+  const toggleUserSelect = (id: string) => {
+    setSelectedUsers(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const shareSelected = async (shared: boolean) => {
+    if (selectedUsers.size === 0) return;
+    await api.shareUsers([...selectedUsers], shared);
+    setSelectedUsers(new Set());
+    loadAccounts();
   };
 
   const tabs: { key: Tab; label: string }[] = [
@@ -252,11 +266,20 @@ export default function Admin() {
             <CardTitle>Kiro Accounts ({accounts.length})</CardTitle>
             <CardDescription>All configured Kiro accounts across global, user, and pool</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {selectedUsers.size > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">{selectedUsers.size} selected</span>
+                <Button size="sm" onClick={() => shareSelected(true)}>Share to Pool</Button>
+                <Button size="sm" variant="outline" onClick={() => shareSelected(false)}>Unshare</Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedUsers(new Set())}>Clear</Button>
+              </div>
+            )}
             {accounts.length > 0 ? (
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-8"></TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Label</TableHead>
                     <TableHead>Region</TableHead>
@@ -270,11 +293,19 @@ export default function Admin() {
                   {accounts.map(a => (
                     <TableRow key={`${a.type}-${a.id}`}>
                       <TableCell>
+                        {a.type === 'user' && (
+                          <input type="checkbox" checked={selectedUsers.has(a.id)} onChange={() => toggleUserSelect(a.id)} />
+                        )}
+                      </TableCell>
+                      <TableCell>
                         <Badge variant={a.type === 'global' ? 'default' : a.type === 'user' ? 'secondary' : 'outline'}>
                           {a.type}
                         </Badge>
                       </TableCell>
-                      <TableCell className="font-medium">{a.label}</TableCell>
+                      <TableCell className="font-medium">
+                        {a.label}
+                        {a.shared && <Badge variant="outline" className="ml-2">Shared</Badge>}
+                      </TableCell>
                       <TableCell className="text-muted-foreground">{a.region || '—'}</TableCell>
                       <TableCell>
                         <Badge variant={a.enabled ? 'default' : 'destructive'}>

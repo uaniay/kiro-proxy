@@ -77,7 +77,25 @@ impl PoolScheduler {
         }
 
         match db::get_enabled_pool_entries(pool).await {
-            Ok(entries) => {
+            Ok(mut entries) => {
+                // Also include shared user tokens
+                if let Ok(shared) = db::get_shared_kiro_tokens(pool).await {
+                    for t in shared {
+                        entries.push(PoolEntryRow {
+                            id: format!("user:{}", t.user_id),
+                            label: format!("shared:{}", t.user_id),
+                            refresh_token: t.refresh_token,
+                            access_token: t.access_token,
+                            token_expiry: t.token_expiry,
+                            client_id: t.client_id,
+                            client_secret: t.client_secret,
+                            sso_region: t.sso_region,
+                            enabled: true,
+                            last_used: None,
+                            created_at: t.updated_at,
+                        });
+                    }
+                }
                 let count = entries.len();
                 *self.cache.write().await = entries;
                 *self.cache_updated.write().await = Instant::now();

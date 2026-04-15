@@ -48,4 +48,6 @@ export const api = {
   listAccounts: () => request('/admin/accounts'),
   toggleAccount: (id: string, type: string, enabled: boolean) =>
     request(`/admin/accounts/${id}`, { method: 'PATCH', body: JSON.stringify({ type, enabled }) }),
+  shareUsers: (user_ids: string[], shared: boolean) =>
+    request('/admin/users/share', { method: 'POST', body: JSON.stringify({ user_ids, shared }) }),
 };

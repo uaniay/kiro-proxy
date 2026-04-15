@@ -260,6 +260,7 @@ pub async fn list_accounts_handler(
             "type": "user",
             "label": format!("{} ({})", t.email, t.name),
             "enabled": t.enabled,
+            "shared": t.shared,
             "region": t.sso_region,
             "has_token": t.has_token,
             "last_used": t.updated_at,
@@ -458,4 +459,37 @@ pub async fn pool_poll_handler(
             Ok(Json(json!({"status": "success"})))
         }
     }
+}
+
+#[derive(Deserialize)]
+pub struct ShareUsersRequest {
+    pub user_ids: Vec<String>,
+    pub shared: bool,
+}
+
+pub async fn share_users_handler(
+    State(state): State<AppState>,
+    request: Request<axum::body::Body>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_admin(&request)?;
+    let db_pool = state.db.as_ref().ok_or_else(|| {
+        ApiError::ConfigError("Database not configured".to_string())
+    })?;
+
+    let body_bytes = axum::body::to_bytes(request.into_body(), 4096)
+        .await
+        .map_err(|e| ApiError::ValidationError(format!("Failed to read body: {}", e)))?;
+    let body: ShareUsersRequest = serde_json::from_slice(&body_bytes)
+        .map_err(|e| ApiError::ValidationError(format!("Invalid JSON: {}", e)))?;
+
+    if body.user_ids.is_empty() {
+        return Err(ApiError::ValidationError("user_ids cannot be empty".to_string()));
+    }
+
+    let affected = db::set_kiro_tokens_shared(db_pool, &body.user_ids, body.shared).await
+        .map_err(|e| ApiError::Internal(e))?;
+
+    state.pool_scheduler.invalidate_cache().await;
+
+    Ok(Json(json!({ "status": "ok", "affected": affected })))
 }

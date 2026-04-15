@@ -100,18 +100,18 @@ export default function Admin() {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <h1 className="text-2xl font-semibold">Admin</h1>
+    <div className="max-w-5xl mx-auto p-6 space-y-6">
+      <h1 className="text-2xl font-semibold text-primary">Admin</h1>
 
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1 border-b border-border/50">
         {tabs.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
               tab === t.key
                 ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
             }`}
           >
             {t.label}
@@ -120,7 +120,7 @@ export default function Admin() {
       </div>
 
       {tab === 'users' && (
-        <Card>
+        <Card className="backdrop-blur-xl border-border/50 shadow-sm">
           <CardHeader>
             <CardTitle>Users ({users.length})</CardTitle>
             <CardDescription>Registered users</CardDescription>
@@ -161,7 +161,7 @@ export default function Admin() {
       )}
 
       {tab === 'usage' && (
-        <Card>
+        <Card className="backdrop-blur-xl border-border/50 shadow-sm">
           <CardHeader>
             <CardTitle>API Key Usage</CardTitle>
             <CardDescription>Token usage across all users</CardDescription>
@@ -207,7 +207,7 @@ export default function Admin() {
       )}
 
       {tab === 'pool' && (
-        <Card>
+        <Card className="backdrop-blur-xl border-border/50 shadow-sm">
           <CardHeader>
             <CardTitle>Token Pool ({pool.length})</CardTitle>
             <CardDescription>Admin-managed Kiro tokens for load balancing</CardDescription>
@@ -268,7 +268,7 @@ export default function Admin() {
       )}
 
       {tab === 'accounts' && (
-        <Card>
+        <Card className="backdrop-blur-xl border-border/50 shadow-sm">
           <CardHeader>
             <CardTitle>Kiro Accounts ({accounts.length})</CardTitle>
             <CardDescription>All configured Kiro accounts across global, user, and pool</CardDescription>

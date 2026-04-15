@@ -490,10 +490,12 @@ pub async fn record_usage(
 pub async fn get_key_usage_stats(pool: &SqlitePool, user_id: &str) -> Result<Vec<KeyUsageStats>> {
     let rows = sqlx::query_as::<_, KeyUsageStats>(
         "SELECT k.id, k.key_prefix, k.name, k.last_used, k.created_at, k.user_id, \
+         usr.email as user_email, usr.name as user_name, \
          COALESCE(SUM(u.input_tokens), 0) as total_input_tokens, \
          COALESCE(SUM(u.output_tokens), 0) as total_output_tokens, \
          COUNT(u.id) as request_count \
          FROM api_keys k LEFT JOIN usage_logs u ON k.id = u.api_key_id \
+         JOIN users usr ON k.user_id = usr.id \
          WHERE k.user_id = ? GROUP BY k.id ORDER BY k.created_at"
     ).bind(user_id).fetch_all(pool).await?;
     Ok(rows)
@@ -502,10 +504,12 @@ pub async fn get_key_usage_stats(pool: &SqlitePool, user_id: &str) -> Result<Vec
 pub async fn get_all_usage_stats(pool: &SqlitePool) -> Result<Vec<KeyUsageStats>> {
     let rows = sqlx::query_as::<_, KeyUsageStats>(
         "SELECT k.id, k.key_prefix, k.name, k.last_used, k.created_at, k.user_id, \
+         usr.email as user_email, usr.name as user_name, \
          COALESCE(SUM(u.input_tokens), 0) as total_input_tokens, \
          COALESCE(SUM(u.output_tokens), 0) as total_output_tokens, \
          COUNT(u.id) as request_count \
          FROM api_keys k LEFT JOIN usage_logs u ON k.id = u.api_key_id \
+         JOIN users usr ON k.user_id = usr.id \
          GROUP BY k.id ORDER BY k.created_at"
     ).fetch_all(pool).await?;
     Ok(rows)
@@ -519,6 +523,8 @@ pub struct KeyUsageStats {
     pub last_used: Option<String>,
     pub created_at: String,
     pub user_id: String,
+    pub user_email: String,
+    pub user_name: String,
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
     pub request_count: i64,

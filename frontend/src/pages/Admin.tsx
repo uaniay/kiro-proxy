@@ -171,8 +171,8 @@ export default function Admin() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Key</TableHead>
                     <TableHead>User</TableHead>
+                    <TableHead>Key</TableHead>
                     <TableHead className="text-right">Requests</TableHead>
                     <TableHead className="text-right">Input Tokens</TableHead>
                     <TableHead className="text-right">Output Tokens</TableHead>
@@ -182,8 +182,15 @@ export default function Admin() {
                 <TableBody>
                   {usage.map(u => (
                     <TableRow key={u.id}>
-                      <TableCell><code className="text-sm">{u.key_prefix}</code> {u.name && <span className="text-muted-foreground ml-1">{u.name}</span>}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{u.user_id.slice(0, 8)}...</TableCell>
+                      <TableCell className="text-sm">{u.user_email} <span className="text-muted-foreground">({u.user_name})</span></TableCell>
+                      <TableCell>
+                        <code
+                          className="text-sm cursor-pointer hover:text-foreground"
+                          title="Click to copy"
+                          onClick={() => { navigator.clipboard.writeText(u.key_prefix); }}
+                        >{u.key_prefix}</code>
+                        {u.name && <span className="text-muted-foreground ml-1">{u.name}</span>}
+                      </TableCell>
                       <TableCell className="text-right font-mono">{formatNumber(u.request_count)}</TableCell>
                       <TableCell className="text-right font-mono">{formatNumber(u.total_input_tokens)}</TableCell>
                       <TableCell className="text-right font-mono">{formatNumber(u.total_output_tokens)}</TableCell>

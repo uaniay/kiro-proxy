@@ -2,7 +2,7 @@
 
 [中文文档](README.zh-CN.md)
 
-Lightweight Kiro API proxy with OpenAI and Anthropic compatible endpoints. Supports single-user proxy mode and multi-user mode with Web UI, per-user Kiro token binding, and admin token pool load balancing.
+Lightweight Kiro API proxy with OpenAI and Anthropic compatible endpoints. Supports single-user proxy mode and multi-user mode with Web UI, per-user Kiro token binding, admin token pool load balancing, and unified account management.
 
 ## Features
 
@@ -11,8 +11,12 @@ Lightweight Kiro API proxy with OpenAI and Anthropic compatible endpoints. Suppo
 - **Multi-user Mode** — SQLite-backed user management with Web UI (React + shadcn/ui)
 - **Per-user API Keys** — Each user creates their own keys with usage tracking (request count, token usage)
 - **Kiro Token Binding** — Users bind their own AWS SSO credentials via device code flow
-- **Admin Token Pool** — Round-robin load balancing across multiple Kiro accounts
+- **Admin Token Pool** — Round-robin load balancing across multiple Kiro accounts, added via device code flow
+- **Token Sharing** — Admin can mark user tokens as shared to participate in pool round-robin
+- **Unified Account Management** — Admin dashboard to view and control all Kiro accounts (global, user, pool) with enable/disable toggles
+- **Usage Tracking** — Per-key request count, input/output token tracking for both streaming and non-streaming requests
 - **Auto Token Refresh** — Background task refreshes expiring tokens every 5 minutes
+- **User Approval Workflow** — New users require admin approval before accessing the API
 - **Retry Logic** — Exponential backoff on 429/5xx errors
 - **Truncation Recovery** — Detects and recovers from truncated API responses
 - **Backward Compatible** — Works as a simple single-user proxy without a database
@@ -40,18 +44,41 @@ Lightweight Kiro API proxy with OpenAI and Anthropic compatible endpoints. Suppo
 ```
 
 **Request routing priority:**
-1. User's own Kiro token (if bound)
-2. Admin token pool (round-robin)
-3. Global `PROXY_API_KEY` fallback
+1. User's own Kiro token (if bound and enabled)
+2. Admin token pool + shared user tokens (round-robin)
+3. Global environment variable fallback (if enabled)
 
 ## Quick Start
 
-### Prerequisites
+### Docker (Recommended)
+
+```bash
+git clone https://github.com/uaniay/kiro-proxy.git
+cd kiro-proxy
+
+cp .env.example .env
+# Edit .env: set PROXY_API_KEY (min 16 chars)
+
+docker compose up -d
+# Web UI: http://localhost:9199/_ui/
+```
+
+The database is stored in a Docker named volume (`kiro-data`), so data persists across container rebuilds. To update:
+
+```bash
+git pull
+docker compose up --build -d    # data is preserved
+# docker compose down -v        # WARNING: this deletes all data
+```
+
+### From Source
+
+#### Prerequisites
 
 - [Rust](https://rustup.rs/) 1.75+
-- [Node.js](https://nodejs.org/) 18+ (for frontend build, multi-user mode only)
+- [Node.js](https://nodejs.org/) 18+ (for frontend build)
 
-### Proxy-only Mode (single user, no database)
+#### Proxy-only Mode (single user, no database)
 
 ```bash
 git clone https://github.com/uaniay/kiro-proxy.git
@@ -65,7 +92,7 @@ cargo run --release
 # Listening on http://localhost:9199
 ```
 
-### Multi-user Mode (with Web UI)
+#### Multi-user Mode (with Web UI)
 
 ```bash
 git clone https://github.com/uaniay/kiro-proxy.git
@@ -85,57 +112,90 @@ cargo run --release
 # Web UI: http://localhost:9199/_ui/
 ```
 
-Open `http://localhost:9199/_ui/` in your browser. The first registered user automatically becomes admin.
+## Configuration
 
-### Docker
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `PROXY_API_KEY` | Yes | — | Shared API key for proxy auth (min 16 chars) |
+| `DATABASE_URL` | No | — | SQLite URL to enable multi-user mode (e.g. `sqlite:/data/kiro-proxy.db?mode=rwc`) |
+| `KIRO_REFRESH_TOKEN` | No | — | AWS SSO refresh token (proxy-only mode) |
+| `KIRO_CLIENT_ID` | No | — | AWS SSO OAuth client ID |
+| `KIRO_CLIENT_SECRET` | No | — | AWS SSO OAuth client secret |
+| `KIRO_REGION` | No | `us-east-1` | AWS region for Kiro API |
+| `KIRO_SSO_REGION` | No | same as `KIRO_REGION` | AWS region for SSO OIDC endpoint |
+| `SERVER_HOST` | No | `0.0.0.0` | Listen address |
+| `SERVER_PORT` | No | `9199` | Listen port |
+| `LOG_LEVEL` | No | `info` | Log level (trace/debug/info/warn/error) |
 
-```bash
-cp .env.example .env
-# Edit .env with your settings
-docker compose up -d
-# Web UI at http://localhost:9199/_ui/
-```
+## Multi-user Mode
+
+When `DATABASE_URL` is set, the proxy enables full multi-user functionality.
+
+### Initial Setup
+
+1. Start the service and open `http://YOUR_HOST:9199/_ui/`
+2. Register the first account — it automatically becomes admin
+3. Subsequent users register and wait for admin approval
+
+### User Workflow
+
+1. **Register & Login** — create account at `/_ui/`, wait for admin approval
+2. **Create API Key** — go to Profile page, create an API key (up to 10 per user)
+3. **Bind Kiro Token** — click "Bind Kiro Token" on Profile page, follow the device code flow:
+   - A code and link are displayed
+   - Open the link in browser, enter the code, authorize with your AWS account
+   - Token is automatically saved and refreshed in the background
+4. **Use the API** — use your API key with any OpenAI/Anthropic compatible client
+
+### Admin Operations
+
+The admin panel is at `/_ui/admin` with four tabs:
+
+#### Users Tab
+- View all registered users with status (active/pending/rejected)
+- Approve or reject pending users
+- Delete users (except yourself)
+
+#### Usage Tab
+- View API key usage across all users
+- Shows user email, key prefix (click to copy), request count, input/output tokens, last used time
+
+#### Token Pool Tab
+- View all admin-managed pool entries with enable/disable status
+- **Add pool entry via device code flow**: enter a label, click "Authorize", complete browser authorization
+- Enable/disable or delete pool entries
+- Pool entries participate in round-robin load balancing for users without their own token
+
+#### Kiro Accounts Tab
+- Unified view of all three account types: Global (env), User tokens, Pool entries
+- **Enable/Disable** any account — disabled accounts are skipped during request routing
+- **Share user tokens to pool**: select users with checkboxes, click "Share to Pool"
+  - Shared tokens participate in pool round-robin alongside admin pool entries
+  - The original user still uses their own token with highest priority
+  - Click "Unshare" to remove from pool
+
+### Token Resolution Priority
+
+When a request comes in with a user's API key:
+
+1. **User's own token** — if the user has bound a Kiro token and it's enabled, use it
+2. **Pool (round-robin)** — admin pool entries + shared user tokens, rotated per request
+3. **Global fallback** — the environment variable `KIRO_REFRESH_TOKEN` account, if enabled
+4. **Error** — if none available, return `KiroTokenRequired` error
 
 ## API Usage
 
 ### OpenAI Format
 
-**Non-streaming:**
-
 ```bash
 curl http://localhost:9199/v1/chat/completions \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-sonnet-4",
-    "messages": [
-      {"role": "system", "content": "You are a helpful assistant."},
-      {"role": "user", "content": "What is the capital of France?"}
-    ],
-    "max_tokens": 1024,
-    "stream": false
-  }'
-```
-
-**Streaming:**
-
-```bash
-curl http://localhost:9199/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet-4",
-    "messages": [
-      {"role": "user", "content": "Write a haiku about programming"}
-    ],
+    "messages": [{"role": "user", "content": "Hello!"}],
     "stream": true
   }'
-```
-
-**List models:**
-
-```bash
-curl http://localhost:9199/v1/models
 ```
 
 **Python (OpenAI SDK):**
@@ -157,8 +217,6 @@ print(response.choices[0].message.content)
 
 ### Anthropic Format
 
-**Non-streaming:**
-
 ```bash
 curl http://localhost:9199/v1/messages \
   -H "Authorization: Bearer YOUR_API_KEY" \
@@ -166,55 +224,8 @@ curl http://localhost:9199/v1/messages \
   -d '{
     "model": "claude-sonnet-4",
     "max_tokens": 1024,
-    "messages": [
-      {"role": "user", "content": "Explain quantum computing in simple terms."}
-    ],
-    "stream": false
-  }'
-```
-
-**Streaming:**
-
-```bash
-curl http://localhost:9199/v1/messages \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet-4",
-    "max_tokens": 1024,
-    "messages": [
-      {"role": "user", "content": "Write a short story about a robot."}
-    ],
+    "messages": [{"role": "user", "content": "Hello!"}],
     "stream": true
-  }'
-```
-
-**With system prompt and tools:**
-
-```bash
-curl http://localhost:9199/v1/messages \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet-4",
-    "max_tokens": 1024,
-    "system": "You are a weather assistant.",
-    "messages": [
-      {"role": "user", "content": "What is the weather in Tokyo?"}
-    ],
-    "tools": [
-      {
-        "name": "get_weather",
-        "description": "Get current weather for a location",
-        "input_schema": {
-          "type": "object",
-          "properties": {
-            "location": {"type": "string"}
-          },
-          "required": ["location"]
-        }
-      }
-    ]
   }'
 ```
 
@@ -236,6 +247,12 @@ message = client.messages.create(
 print(message.content[0].text)
 ```
 
+### List Models
+
+```bash
+curl http://localhost:9199/v1/models
+```
+
 ## Available Models
 
 | Model | Description |
@@ -247,46 +264,46 @@ print(message.content[0].text)
 | `claude-opus-4` | Claude Opus 4 |
 | `claude-opus-4-6` | Claude Opus 4.6 |
 
-## Configuration
+## API Endpoints
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `PROXY_API_KEY` | Yes | — | Shared API key for proxy auth (min 16 chars) |
-| `DATABASE_URL` | No | — | SQLite URL to enable multi-user mode |
-| `KIRO_REFRESH_TOKEN` | No | — | AWS SSO refresh token (proxy-only mode) |
-| `KIRO_CLIENT_ID` | No | — | AWS SSO OAuth client ID |
-| `KIRO_CLIENT_SECRET` | No | — | AWS SSO OAuth client secret |
-| `KIRO_REGION` | No | `us-east-1` | AWS region for Kiro API |
-| `KIRO_SSO_REGION` | No | same as `KIRO_REGION` | AWS region for SSO OIDC endpoint |
-| `SERVER_HOST` | No | `0.0.0.0` | Listen address |
-| `SERVER_PORT` | No | `9199` | Listen port |
-| `LOG_LEVEL` | No | `info` | Log level (trace/debug/info/warn/error) |
+### Proxy Endpoints
 
-## Multi-user Mode
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/v1/models` | List available models |
+| POST | `/v1/chat/completions` | OpenAI-compatible chat (requires API key) |
+| POST | `/v1/messages` | Anthropic-compatible messages (requires API key) |
+| GET | `/health` | Health check |
 
-When `DATABASE_URL` is set, the proxy enables:
+### Web UI Endpoints (under `/_ui/api/`)
 
-- **Web UI** at `/_ui/` — register, login, manage API keys, bind Kiro tokens
-- **First user = admin** — first registered user automatically gets admin role
-- **Per-user API keys** — `sk-` prefixed keys with usage tracking (requests, input/output tokens)
-- **Kiro token binding** — each user can bind their own AWS SSO credentials via device code flow
-- **Admin token pool** — admin can add multiple Kiro accounts for round-robin load balancing
-- **Background tasks** — token refresh (every 5 min), session cleanup (every 1 hr)
-
-### Web UI Endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `/_ui/` | Web UI (React SPA) |
-| `/_ui/api/auth/register` | Register new user |
-| `/_ui/api/auth/login` | Login |
-| `/_ui/api/auth/me` | Current user info |
-| `/_ui/api/keys` | API key management |
-| `/_ui/api/kiro/setup` | Start Kiro token binding |
-| `/_ui/api/kiro/status` | Token status |
-| `/_ui/api/admin/users` | User management (admin) |
-| `/_ui/api/admin/pool` | Token pool management (admin) |
-| `/_ui/api/admin/usage` | Usage statistics (admin) |
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/auth/register` | Public | Register new user |
+| POST | `/auth/login` | Public | Login |
+| GET | `/auth/me` | Session | Current user info |
+| POST | `/auth/logout` | Session | Logout |
+| GET | `/keys` | Session | List user's API keys |
+| POST | `/keys` | Session | Create API key |
+| DELETE | `/keys/:id` | Session | Delete API key |
+| POST | `/kiro/setup` | Session | Start device code flow |
+| POST | `/kiro/poll` | Session | Poll device authorization |
+| GET | `/kiro/status` | Session | Token status |
+| DELETE | `/kiro/token` | Session | Remove Kiro token |
+| GET | `/admin/users` | Admin | List all users |
+| DELETE | `/admin/users/:id` | Admin | Delete user |
+| POST | `/admin/users/:id/approve` | Admin | Approve pending user |
+| POST | `/admin/users/:id/reject` | Admin | Reject pending user |
+| POST | `/admin/users/share` | Admin | Batch share/unshare user tokens |
+| GET | `/admin/pool` | Admin | List token pool |
+| POST | `/admin/pool` | Admin | Add pool entry (manual) |
+| POST | `/admin/pool/setup` | Admin | Start device code flow for pool |
+| POST | `/admin/pool/poll` | Admin | Poll device authorization for pool |
+| DELETE | `/admin/pool/:id` | Admin | Delete pool entry |
+| PATCH | `/admin/pool/:id` | Admin | Toggle pool entry enabled/disabled |
+| GET | `/admin/usage` | Admin | Usage statistics |
+| GET | `/admin/accounts` | Admin | List all Kiro accounts |
+| PATCH | `/admin/accounts/:id` | Admin | Toggle account enabled/disabled |
 
 ## Project Structure
 
@@ -311,19 +328,11 @@ kiro-proxy/
 │   ├── routes/               # API route handlers
 │   └── web_ui/               # Web UI backend (auth, keys, kiro setup, admin)
 ├── frontend/                 # React + Vite + Tailwind + shadcn/ui
-├── migrations/               # SQLite schema migrations
+├── migrations/               # SQLite schema migrations (001-005)
 ├── Dockerfile                # Multi-stage build
 ├── docker-compose.yml
 └── .env.example
 ```
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## License
 

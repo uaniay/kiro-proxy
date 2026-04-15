@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-轻量级 Kiro API 代理，兼容 OpenAI 和 Anthropic 接口格式。支持单用户代理模式和多用户模式（Web UI、用户独立 Kiro Token 绑定、管理员 Token Pool 负载均衡）。
+轻量级 Kiro API 代理，兼容 OpenAI 和 Anthropic 接口格式。支持单用户代理模式和多用户模式（Web UI、用户独立 Kiro Token 绑定、管理员 Token Pool 负载均衡、统一账号管理）。
 
 ## 功能特性
 
@@ -11,8 +11,12 @@
 - **多用户模式** — SQLite 数据库 + Web UI（React + shadcn/ui）
 - **用户独立 API Key** — 每个用户创建自己的 Key，带用量统计（请求数、Token 用量）
 - **Kiro Token 绑定** — 用户通过 AWS SSO Device Code Flow 绑定自己的凭证
-- **管理员 Token Pool** — 多账号轮询负载均衡
+- **管理员 Token Pool** — 多账号轮询负载均衡，通过 Device Code Flow 添加
+- **Token 共享** — 管理员可将用户 Token 标记为共享，参与 Pool 轮询分配
+- **统一账号管理** — 管理员面板统一查看和控制所有 Kiro 账号（全局、用户、Pool），支持启用/禁用
+- **用量追踪** — 按 Key 统计请求数、输入/输出 Token，流式和非流式请求均记录
 - **自动 Token 刷新** — 后台每 5 分钟刷新即将过期的 Token
+- **用户审批流程** — 新用户注册后需管理员审批才能使用 API
 - **重试机制** — 429/5xx 错误指数退避重试
 - **截断恢复** — 检测并恢复被截断的 API 响应
 - **向后兼容** — 不配置数据库时作为简单的单用户代理运行
@@ -40,18 +44,41 @@
 ```
 
 **请求路由优先级：**
-1. 用户自己的 Kiro Token（如已绑定）
-2. 管理员 Token Pool（轮询）
-3. 全局 `PROXY_API_KEY` 兜底
+1. 用户自己的 Kiro Token（如已绑定且启用）
+2. 管理员 Token Pool + 共享用户 Token（轮询）
+3. 全局环境变量账号（如启用）
 
 ## 快速开始
 
-### 环境要求
+### Docker 部署（推荐）
+
+```bash
+git clone https://github.com/uaniay/kiro-proxy.git
+cd kiro-proxy
+
+cp .env.example .env
+# 编辑 .env：设置 PROXY_API_KEY（至少 16 个字符）
+
+docker compose up -d
+# Web UI: http://localhost:9199/_ui/
+```
+
+数据库存储在 Docker 命名卷（`kiro-data`）中，容器重建不会丢失数据。更新方式：
+
+```bash
+git pull
+docker compose up --build -d    # 数据保留
+# docker compose down -v        # 注意：这会删除所有数据！
+```
+
+### 从源码构建
+
+#### 环境要求
 
 - [Rust](https://rustup.rs/) 1.75+
-- [Node.js](https://nodejs.org/) 18+（仅多用户模式需要，用于构建前端）
+- [Node.js](https://nodejs.org/) 18+（用于构建前端）
 
-### 单用户代理模式（无需数据库）
+#### 单用户代理模式（无需数据库）
 
 ```bash
 git clone https://github.com/uaniay/kiro-proxy.git
@@ -65,7 +92,7 @@ cargo run --release
 # 监听 http://localhost:9199
 ```
 
-### 多用户模式（带 Web UI）
+#### 多用户模式（带 Web UI）
 
 ```bash
 git clone https://github.com/uaniay/kiro-proxy.git
@@ -85,57 +112,90 @@ cargo run --release
 # Web UI: http://localhost:9199/_ui/
 ```
 
-打开 `http://localhost:9199/_ui/`，注册的第一个用户自动成为管理员。
+## 配置项
 
-### Docker 部署
+| 变量 | 必填 | 默认值 | 说明 |
+|------|------|--------|------|
+| `PROXY_API_KEY` | 是 | — | 代理认证密钥（至少 16 个字符） |
+| `DATABASE_URL` | 否 | — | SQLite 数据库 URL，设置后启用多用户模式（如 `sqlite:/data/kiro-proxy.db?mode=rwc`） |
+| `KIRO_REFRESH_TOKEN` | 否 | — | AWS SSO 刷新令牌（单用户模式） |
+| `KIRO_CLIENT_ID` | 否 | — | AWS SSO OAuth 客户端 ID |
+| `KIRO_CLIENT_SECRET` | 否 | — | AWS SSO OAuth 客户端密钥 |
+| `KIRO_REGION` | 否 | `us-east-1` | Kiro API 的 AWS 区域 |
+| `KIRO_SSO_REGION` | 否 | 同 `KIRO_REGION` | SSO OIDC 端点的 AWS 区域 |
+| `SERVER_HOST` | 否 | `0.0.0.0` | 监听地址 |
+| `SERVER_PORT` | 否 | `9199` | 监听端口 |
+| `LOG_LEVEL` | 否 | `info` | 日志级别（trace/debug/info/warn/error） |
 
-```bash
-cp .env.example .env
-# 编辑 .env
-docker compose up -d
-# Web UI: http://localhost:9199/_ui/
-```
+## 多用户模式
+
+设置 `DATABASE_URL` 后，代理启用完整的多用户功能。
+
+### 初始配置
+
+1. 启动服务，打开 `http://YOUR_HOST:9199/_ui/`
+2. 注册第一个账号 — 自动成为管理员
+3. 后续用户注册后需等待管理员审批
+
+### 用户操作流程
+
+1. **注册登录** — 在 `/_ui/` 创建账号，等待管理员审批
+2. **创建 API Key** — 进入 Profile 页面，创建 API Key（每用户最多 10 个）
+3. **绑定 Kiro Token** — 在 Profile 页面点击"绑定 Kiro Token"，按照 Device Code Flow 操作：
+   - 页面显示一个授权码和链接
+   - 在浏览器中打开链接，输入授权码，用 AWS 账号授权
+   - Token 自动保存，后台定时刷新
+4. **使用 API** — 用你的 API Key 配合任何 OpenAI/Anthropic 兼容客户端使用
+
+### 管理员操作
+
+管理员面板位于 `/_ui/admin`，包含四个 Tab：
+
+#### Users（用户管理）
+- 查看所有注册用户及状态（active/pending/rejected）
+- 审批或拒绝待审核用户
+- 删除用户（不能删除自己）
+
+#### Usage（用量统计）
+- 查看所有用户的 API Key 用量
+- 显示用户邮箱、Key 前缀（点击可复制）、请求数、输入/输出 Token、最后使用时间
+
+#### Token Pool（令牌池）
+- 查看所有管理员管理的 Pool 条目及启用/禁用状态
+- **通过 Device Code Flow 添加 Pool 条目**：输入标签，点击"Authorize"，在浏览器中完成授权
+- 启用/禁用或删除 Pool 条目
+- Pool 条目参与轮询负载均衡，为没有自己 Token 的用户提供服务
+
+#### Kiro Accounts（Kiro 账号管理）
+- 统一查看三种账号类型：Global（环境变量）、User（用户绑定）、Pool（管理员添加）
+- **启用/禁用**任意账号 — 禁用的账号在请求路由时被跳过
+- **共享用户 Token 到 Pool**：勾选用户，点击"Share to Pool"
+  - 共享的 Token 与管理员 Pool 条目一起参与轮询
+  - 原用户仍然优先使用自己的 Token
+  - 点击"Unshare"取消共享
+
+### Token 解析优先级
+
+当请求携带用户的 API Key 时：
+
+1. **用户自己的 Token** — 如果用户已绑定 Kiro Token 且启用，优先使用
+2. **Pool 轮询** — 管理员 Pool 条目 + 共享用户 Token，按请求轮询
+3. **全局兜底** — 环境变量 `KIRO_REFRESH_TOKEN` 配置的账号（如启用）
+4. **错误** — 如果都不可用，返回 `KiroTokenRequired` 错误
 
 ## 接口调用示例
 
 ### OpenAI 格式
 
-**非流式请求：**
-
 ```bash
 curl http://localhost:9199/v1/chat/completions \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-sonnet-4",
-    "messages": [
-      {"role": "system", "content": "你是一个有用的助手。"},
-      {"role": "user", "content": "法国的首都是哪里？"}
-    ],
-    "max_tokens": 1024,
-    "stream": false
-  }'
-```
-
-**流式请求：**
-
-```bash
-curl http://localhost:9199/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet-4",
-    "messages": [
-      {"role": "user", "content": "写一首关于编程的俳句"}
-    ],
+    "messages": [{"role": "user", "content": "你好！"}],
     "stream": true
   }'
-```
-
-**获取模型列表：**
-
-```bash
-curl http://localhost:9199/v1/models
 ```
 
 **Python（OpenAI SDK）：**
@@ -157,8 +217,6 @@ print(response.choices[0].message.content)
 
 ### Anthropic 格式
 
-**非流式请求：**
-
 ```bash
 curl http://localhost:9199/v1/messages \
   -H "Authorization: Bearer YOUR_API_KEY" \
@@ -166,55 +224,8 @@ curl http://localhost:9199/v1/messages \
   -d '{
     "model": "claude-sonnet-4",
     "max_tokens": 1024,
-    "messages": [
-      {"role": "user", "content": "用简单的语言解释量子计算。"}
-    ],
-    "stream": false
-  }'
-```
-
-**流式请求：**
-
-```bash
-curl http://localhost:9199/v1/messages \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet-4",
-    "max_tokens": 1024,
-    "messages": [
-      {"role": "user", "content": "写一个关于机器人的短故事。"}
-    ],
+    "messages": [{"role": "user", "content": "你好！"}],
     "stream": true
-  }'
-```
-
-**带系统提示和工具调用：**
-
-```bash
-curl http://localhost:9199/v1/messages \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet-4",
-    "max_tokens": 1024,
-    "system": "你是一个天气助手。",
-    "messages": [
-      {"role": "user", "content": "东京的天气怎么样？"}
-    ],
-    "tools": [
-      {
-        "name": "get_weather",
-        "description": "获取指定地点的当前天气",
-        "input_schema": {
-          "type": "object",
-          "properties": {
-            "location": {"type": "string"}
-          },
-          "required": ["location"]
-        }
-      }
-    ]
   }'
 ```
 
@@ -236,6 +247,12 @@ message = client.messages.create(
 print(message.content[0].text)
 ```
 
+### 获取模型列表
+
+```bash
+curl http://localhost:9199/v1/models
+```
+
 ## 可用模型
 
 | 模型 | 说明 |
@@ -247,46 +264,46 @@ print(message.content[0].text)
 | `claude-opus-4` | Claude Opus 4 |
 | `claude-opus-4-6` | Claude Opus 4.6 |
 
-## 配置项
+## API 端点
 
-| 变量 | 必填 | 默认值 | 说明 |
-|------|------|--------|------|
-| `PROXY_API_KEY` | 是 | — | 代理认证密钥（至少 16 个字符） |
-| `DATABASE_URL` | 否 | — | SQLite 数据库 URL，设置后启用多用户模式 |
-| `KIRO_REFRESH_TOKEN` | 否 | — | AWS SSO 刷新令牌（单用户模式） |
-| `KIRO_CLIENT_ID` | 否 | — | AWS SSO OAuth 客户端 ID |
-| `KIRO_CLIENT_SECRET` | 否 | — | AWS SSO OAuth 客户端密钥 |
-| `KIRO_REGION` | 否 | `us-east-1` | Kiro API 的 AWS 区域 |
-| `KIRO_SSO_REGION` | 否 | 同 `KIRO_REGION` | SSO OIDC 端点的 AWS 区域 |
-| `SERVER_HOST` | 否 | `0.0.0.0` | 监听地址 |
-| `SERVER_PORT` | 否 | `9199` | 监听端口 |
-| `LOG_LEVEL` | 否 | `info` | 日志级别（trace/debug/info/warn/error） |
+### 代理端点
 
-## 多用户模式
+| 方法 | 端点 | 说明 |
+|------|------|------|
+| GET | `/v1/models` | 获取可用模型列表 |
+| POST | `/v1/chat/completions` | OpenAI 兼容聊天（需 API Key） |
+| POST | `/v1/messages` | Anthropic 兼容消息（需 API Key） |
+| GET | `/health` | 健康检查 |
 
-设置 `DATABASE_URL` 后，代理启用以下功能：
+### Web UI 端点（`/_ui/api/` 下）
 
-- **Web UI** — `/_ui/` 路径，注册、登录、管理 API Key、绑定 Kiro Token
-- **首个用户 = 管理员** — 第一个注册的用户自动获得管理员权限
-- **用户独立 API Key** — `sk-` 前缀的密钥，带用量统计（请求数、输入/输出 Token）
-- **Kiro Token 绑定** — 每个用户可通过 AWS SSO Device Code Flow 绑定自己的凭证
-- **管理员 Token Pool** — 管理员可添加多个 Kiro 账号，轮询负载均衡
-- **后台任务** — Token 刷新（每 5 分钟）、Session 清理（每 1 小时）
-
-### Web UI 接口
-
-| 端点 | 说明 |
-|------|------|
-| `/_ui/` | Web UI（React SPA） |
-| `/_ui/api/auth/register` | 注册新用户 |
-| `/_ui/api/auth/login` | 登录 |
-| `/_ui/api/auth/me` | 当前用户信息 |
-| `/_ui/api/keys` | API Key 管理 |
-| `/_ui/api/kiro/setup` | 发起 Kiro Token 绑定 |
-| `/_ui/api/kiro/status` | Token 状态 |
-| `/_ui/api/admin/users` | 用户管理（管理员） |
-| `/_ui/api/admin/pool` | Token Pool 管理（管理员） |
-| `/_ui/api/admin/usage` | 用量统计（管理员） |
+| 方法 | 端点 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/auth/register` | 公开 | 注册新用户 |
+| POST | `/auth/login` | 公开 | 登录 |
+| GET | `/auth/me` | Session | 当前用户信息 |
+| POST | `/auth/logout` | Session | 登出 |
+| GET | `/keys` | Session | 列出用户的 API Key |
+| POST | `/keys` | Session | 创建 API Key |
+| DELETE | `/keys/:id` | Session | 删除 API Key |
+| POST | `/kiro/setup` | Session | 发起 Device Code Flow |
+| POST | `/kiro/poll` | Session | 轮询设备授权 |
+| GET | `/kiro/status` | Session | Token 状态 |
+| DELETE | `/kiro/token` | Session | 删除 Kiro Token |
+| GET | `/admin/users` | Admin | 列出所有用户 |
+| DELETE | `/admin/users/:id` | Admin | 删除用户 |
+| POST | `/admin/users/:id/approve` | Admin | 审批用户 |
+| POST | `/admin/users/:id/reject` | Admin | 拒绝用户 |
+| POST | `/admin/users/share` | Admin | 批量共享/取消共享用户 Token |
+| GET | `/admin/pool` | Admin | 列出 Token Pool |
+| POST | `/admin/pool` | Admin | 添加 Pool 条目（手动） |
+| POST | `/admin/pool/setup` | Admin | 发起 Pool Device Code Flow |
+| POST | `/admin/pool/poll` | Admin | 轮询 Pool 设备授权 |
+| DELETE | `/admin/pool/:id` | Admin | 删除 Pool 条目 |
+| PATCH | `/admin/pool/:id` | Admin | 切换 Pool 条目启用/禁用 |
+| GET | `/admin/usage` | Admin | 用量统计 |
+| GET | `/admin/accounts` | Admin | 列出所有 Kiro 账号 |
+| PATCH | `/admin/accounts/:id` | Admin | 切换账号启用/禁用 |
 
 ## 项目结构
 
@@ -311,19 +328,11 @@ kiro-proxy/
 │   ├── routes/               # API 路由处理
 │   └── web_ui/               # Web UI 后端（认证、密钥、Kiro 绑定、管理）
 ├── frontend/                 # React + Vite + Tailwind + shadcn/ui
-├── migrations/               # SQLite 数据库迁移
+├── migrations/               # SQLite 数据库迁移（001-005）
 ├── Dockerfile                # 多阶段构建
 ├── docker-compose.yml
 └── .env.example
 ```
-
-## 贡献
-
-1. Fork 本仓库
-2. 创建功能分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m 'Add amazing feature'`)
-4. 推送分支 (`git push origin feature/amazing-feature`)
-5. 发起 Pull Request
 
 ## 许可证
 

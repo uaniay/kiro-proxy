@@ -25,7 +25,12 @@ export default function Admin() {
   const [poolDevice, setPoolDevice] = useState<{ pool_id: string; device_code: string; user_code: string; verification_uri: string; verification_uri_complete?: string } | null>(null);
   const [poolPolling, setPoolPolling] = useState(false);
 
-  useEffect(() => { loadUsers(); loadPool(); loadUsage(); loadAccounts(); }, []);
+  useEffect(() => {
+    if (tab === 'users') loadUsers();
+    else if (tab === 'usage') loadUsage();
+    else if (tab === 'pool') loadPool();
+    else if (tab === 'accounts') loadAccounts();
+  }, [tab]);
 
   const loadUsers = async () => { try { setUsers((await api.listUsers()).users); } catch {} };
   const loadPool = async () => { try { setPool((await api.listPool()).pool); } catch {} };

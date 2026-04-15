@@ -37,6 +37,10 @@ export const api = {
   listPool: () => request('/admin/pool'),
   addPool: (data: { label: string; refresh_token: string; client_id?: string; client_secret?: string; sso_region?: string }) =>
     request('/admin/pool', { method: 'POST', body: JSON.stringify(data) }),
+  poolSetup: (label: string, sso_region?: string) =>
+    request('/admin/pool/setup', { method: 'POST', body: JSON.stringify({ label, sso_region }) }),
+  poolPoll: (pool_id: string, device_code: string) =>
+    request('/admin/pool/poll', { method: 'POST', body: JSON.stringify({ pool_id, device_code }) }),
   deletePool: (id: string) => request(`/admin/pool/${id}`, { method: 'DELETE' }),
   togglePool: (id: string, enabled: boolean) =>
     request(`/admin/pool/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),

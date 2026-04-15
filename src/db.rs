@@ -344,6 +344,27 @@ pub async fn add_pool_entry(
     Ok(id)
 }
 
+pub async fn get_pool_entry(pool: &SqlitePool, id: &str) -> Result<Option<PoolEntryRow>> {
+    let row = sqlx::query_as::<_, PoolEntryRow>(
+        "SELECT id, label, refresh_token, access_token, token_expiry, client_id, client_secret, sso_region, enabled, last_used, created_at FROM admin_token_pool WHERE id = ?"
+    ).bind(id).fetch_optional(pool).await?;
+    Ok(row)
+}
+
+pub async fn update_pool_entry_tokens(
+    pool: &SqlitePool, id: &str, refresh_token: &str,
+    access_token: &str, token_expiry: &str,
+    client_id: &str, client_secret: &str,
+) -> Result<bool> {
+    let result = sqlx::query(
+        "UPDATE admin_token_pool SET refresh_token = ?, access_token = ?, token_expiry = ?, client_id = ?, client_secret = ? WHERE id = ?"
+    )
+    .bind(refresh_token).bind(access_token).bind(token_expiry)
+    .bind(client_id).bind(client_secret).bind(id)
+    .execute(pool).await?;
+    Ok(result.rows_affected() > 0)
+}
+
 pub async fn list_pool_entries(pool: &SqlitePool) -> Result<Vec<PoolEntryRow>> {
     let rows = sqlx::query_as::<_, PoolEntryRow>(
         "SELECT id, label, refresh_token, access_token, token_expiry, client_id, client_secret, sso_region, enabled, last_used, created_at FROM admin_token_pool ORDER BY label"

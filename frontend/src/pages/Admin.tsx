@@ -20,7 +20,9 @@ export default function Admin() {
   const [pool, setPool] = useState<any[]>([]);
   const [usage, setUsage] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
-  const [newPool, setNewPool] = useState({ label: '', refresh_token: '', client_id: '', client_secret: '', sso_region: 'us-east-1' });
+  const [newPool, setNewPool] = useState({ label: '', sso_region: 'us-east-1' });
+  const [poolDevice, setPoolDevice] = useState<{ pool_id: string; device_code: string; user_code: string; verification_uri: string; verification_uri_complete?: string } | null>(null);
+  const [poolPolling, setPoolPolling] = useState(false);
 
   useEffect(() => { loadUsers(); loadPool(); loadUsage(); loadAccounts(); }, []);
 
@@ -32,12 +34,41 @@ export default function Admin() {
   const deleteUser = async (id: string) => { if (!confirm('Delete this user?')) return; await api.deleteUser(id); loadUsers(); };
   const approveUser = async (id: string) => { await api.approveUser(id); loadUsers(); };
   const rejectUser = async (id: string) => { if (!confirm('Reject this user?')) return; await api.rejectUser(id); loadUsers(); };
-  const addPool = async () => {
-    if (!newPool.label || !newPool.refresh_token) return;
-    await api.addPool({ label: newPool.label, refresh_token: newPool.refresh_token, client_id: newPool.client_id || undefined, client_secret: newPool.client_secret || undefined, sso_region: newPool.sso_region || undefined });
-    setNewPool({ label: '', refresh_token: '', client_id: '', client_secret: '', sso_region: 'us-east-1' });
-    loadPool();
-    loadAccounts();
+
+  const startPoolSetup = async () => {
+    if (!newPool.label) return;
+    try {
+      const res = await api.poolSetup(newPool.label, newPool.sso_region || undefined);
+      setPoolDevice({ pool_id: res.pool_id, device_code: res.device_code, user_code: res.user_code, verification_uri: res.verification_uri, verification_uri_complete: res.verification_uri_complete });
+      setPoolPolling(true);
+      pollPoolDevice(res.pool_id, res.device_code, res.interval || 5);
+    } catch (e: any) {
+      alert(e.message || 'Setup failed');
+    }
+  };
+
+  const pollPoolDevice = async (poolId: string, deviceCode: string, interval: number) => {
+    const poll = async () => {
+      try {
+        const res = await api.poolPoll(poolId, deviceCode);
+        if (res.status === 'success') {
+          setPoolDevice(null);
+          setPoolPolling(false);
+          setNewPool({ label: '', sso_region: 'us-east-1' });
+          loadPool();
+          loadAccounts();
+          return;
+        }
+        if (res.status === 'pending' || res.status === 'slow_down') {
+          setTimeout(poll, (res.status === 'slow_down' ? interval + 5 : interval) * 1000);
+          return;
+        }
+      } catch {
+        setPoolDevice(null);
+        setPoolPolling(false);
+      }
+    };
+    setTimeout(poll, interval * 1000);
   };
   const deletePool = async (id: string) => { if (!confirm('Delete?')) return; await api.deletePool(id); loadPool(); loadAccounts(); };
   const togglePool = async (id: string, enabled: boolean) => { await api.togglePool(id, !enabled); loadPool(); loadAccounts(); };
@@ -190,14 +221,26 @@ export default function Admin() {
             )}
             <div className="p-4 border rounded-lg space-y-3">
               <p className="text-sm font-medium">Add Pool Entry</p>
-              <div className="grid grid-cols-2 gap-2">
-                <Input placeholder="Label *" value={newPool.label} onChange={e => setNewPool({ ...newPool, label: e.target.value })} />
-                <Input placeholder="SSO Region" value={newPool.sso_region} onChange={e => setNewPool({ ...newPool, sso_region: e.target.value })} />
-                <Input placeholder="Refresh Token *" value={newPool.refresh_token} onChange={e => setNewPool({ ...newPool, refresh_token: e.target.value })} className="col-span-2" />
-                <Input placeholder="Client ID" value={newPool.client_id} onChange={e => setNewPool({ ...newPool, client_id: e.target.value })} />
-                <Input placeholder="Client Secret" value={newPool.client_secret} onChange={e => setNewPool({ ...newPool, client_secret: e.target.value })} />
-              </div>
-              <Button onClick={addPool}>Add</Button>
+              {poolDevice ? (
+                <div className="space-y-2">
+                  <p className="text-sm">Open the link below and enter the code:</p>
+                  <div className="flex items-center gap-2">
+                    <code className="text-lg font-bold">{poolDevice.user_code}</code>
+                    <a href={poolDevice.verification_uri_complete || poolDevice.verification_uri} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 underline">
+                      {poolDevice.verification_uri}
+                    </a>
+                  </div>
+                  {poolPolling && <p className="text-sm text-muted-foreground">Waiting for authorization...</p>}
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input placeholder="Label *" value={newPool.label} onChange={e => setNewPool({ ...newPool, label: e.target.value })} />
+                    <Input placeholder="SSO Region" value={newPool.sso_region} onChange={e => setNewPool({ ...newPool, sso_region: e.target.value })} />
+                  </div>
+                  <Button onClick={startPoolSetup} disabled={!newPool.label}>Authorize</Button>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>

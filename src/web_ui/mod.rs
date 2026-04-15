@@ -33,6 +33,8 @@ pub fn web_ui_routes(state: AppState) -> Router {
         .route("/api/admin/users/:id/reject", post(admin::reject_user_handler))
         .route("/api/admin/pool", get(admin::list_pool_handler))
         .route("/api/admin/pool", post(admin::add_pool_handler))
+        .route("/api/admin/pool/setup", post(admin::pool_setup_handler))
+        .route("/api/admin/pool/poll", post(admin::pool_poll_handler))
         .route("/api/admin/pool/:id", delete(admin::delete_pool_handler))
         .route("/api/admin/pool/:id", patch(admin::toggle_pool_handler))
         .route("/api/admin/usage", get(admin::usage_handler))

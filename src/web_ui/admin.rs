@@ -5,6 +5,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::sync::atomic::Ordering;
 
+use crate::auth::oauth;
 use crate::db;
 use crate::error::ApiError;
 use crate::routes::AppState;
@@ -335,4 +336,126 @@ pub async fn toggle_account_handler(
     }
 
     Ok(Json(json!({ "status": "ok", "enabled": body.enabled })))
+}
+
+#[derive(Deserialize)]
+pub struct PoolSetupRequest {
+    pub label: String,
+    pub sso_region: Option<String>,
+}
+
+/// Start device code flow to add a new pool entry.
+pub async fn pool_setup_handler(
+    State(state): State<AppState>,
+    request: Request<axum::body::Body>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_admin(&request)?;
+    let db_pool = state.db.as_ref().ok_or_else(|| {
+        ApiError::ConfigError("Database not configured".to_string())
+    })?;
+
+    let body_bytes = axum::body::to_bytes(request.into_body(), 4096)
+        .await
+        .map_err(|e| ApiError::ValidationError(format!("Failed to read body: {}", e)))?;
+    let body: PoolSetupRequest = serde_json::from_slice(&body_bytes)
+        .map_err(|e| ApiError::ValidationError(format!("Invalid JSON: {}", e)))?;
+
+    if body.label.is_empty() {
+        return Err(ApiError::ValidationError("label is required".to_string()));
+    }
+
+    let region = body.sso_region.as_deref().unwrap_or("us-east-1");
+
+    // Register OAuth client
+    let http_client = reqwest::Client::new();
+    let registration = oauth::register_client(&http_client, region, "device", None, Some(""))
+        .await
+        .map_err(|e| ApiError::Internal(e))?;
+
+    // Start device authorization
+    let device_auth = oauth::start_device_authorization(
+        &http_client, region, &registration.client_id, &registration.client_secret, "",
+    )
+    .await
+    .map_err(|e| ApiError::Internal(e))?;
+
+    // Create pool entry with empty refresh_token (will be filled on poll success)
+    let pool_id = db::add_pool_entry(
+        db_pool, &body.label, "",
+        Some(&registration.client_id), Some(&registration.client_secret), Some(region),
+    ).await
+    .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
+    Ok(Json(json!({
+        "pool_id": pool_id,
+        "device_code": device_auth.device_code,
+        "user_code": device_auth.user_code,
+        "verification_uri": device_auth.verification_uri,
+        "verification_uri_complete": device_auth.verification_uri_complete,
+        "expires_in": device_auth.expires_in,
+        "interval": device_auth.interval,
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct PoolPollRequest {
+    pub pool_id: String,
+    pub device_code: String,
+}
+
+/// Poll device code flow for a pool entry.
+pub async fn pool_poll_handler(
+    State(state): State<AppState>,
+    request: Request<axum::body::Body>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_admin(&request)?;
+    let db_pool = state.db.as_ref().ok_or_else(|| {
+        ApiError::ConfigError("Database not configured".to_string())
+    })?;
+
+    let body_bytes = axum::body::to_bytes(request.into_body(), 4096)
+        .await
+        .map_err(|e| ApiError::ValidationError(format!("Failed to read body: {}", e)))?;
+    let body: PoolPollRequest = serde_json::from_slice(&body_bytes)
+        .map_err(|e| ApiError::ValidationError(format!("Invalid JSON: {}", e)))?;
+
+    let entry = db::get_pool_entry(db_pool, &body.pool_id).await
+        .map_err(|e| ApiError::Internal(e))?
+        .ok_or_else(|| ApiError::NotFound("Pool entry not found".to_string()))?;
+
+    let client_id = entry.client_id.as_deref()
+        .ok_or_else(|| ApiError::ValidationError("Missing client_id".to_string()))?;
+    let client_secret = entry.client_secret.as_deref()
+        .ok_or_else(|| ApiError::ValidationError("Missing client_secret".to_string()))?;
+    let region = entry.sso_region.as_deref().unwrap_or("us-east-1");
+
+    let http_client = reqwest::Client::new();
+    let result = oauth::poll_device_token(&http_client, region, client_id, client_secret, &body.device_code)
+        .await
+        .map_err(|e| ApiError::Internal(e))?;
+
+    match result {
+        crate::auth::PollResult::Pending => {
+            Ok(Json(json!({"status": "pending"})))
+        }
+        crate::auth::PollResult::SlowDown => {
+            Ok(Json(json!({"status": "slow_down"})))
+        }
+        crate::auth::PollResult::Success(token) => {
+            let expires_in = token.expires_in.unwrap_or(3600);
+            let expiry = (chrono::Utc::now() + chrono::Duration::seconds(expires_in as i64 - 60)).to_rfc3339();
+
+            db::update_pool_entry_tokens(
+                db_pool, &body.pool_id,
+                &token.refresh_token.unwrap_or_default(),
+                &token.access_token, &expiry,
+                client_id, client_secret,
+            ).await
+            .map_err(|e| ApiError::Internal(e))?;
+
+            state.pool_scheduler.invalidate_cache().await;
+
+            Ok(Json(json!({"status": "success"})))
+        }
+    }
 }

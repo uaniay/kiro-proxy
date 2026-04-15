@@ -25,8 +25,18 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         for statement in schema.split(';') {
             let trimmed = statement.trim();
             if !trimmed.is_empty() {
-                sqlx::query(trimmed).execute(pool).await
-                    .with_context(|| format!("Failed to execute migration: {}", &trimmed[..trimmed.len().min(80)]))?;
+                match sqlx::query(trimmed).execute(pool).await {
+                    Ok(_) => {}
+                    Err(e) => {
+                        let err_str = e.to_string();
+                        // Ignore "duplicate column" errors from ALTER TABLE re-runs
+                        if err_str.contains("duplicate column name") {
+                            tracing::debug!("Migration skipped (column already exists): {}", &trimmed[..trimmed.len().min(80)]);
+                        } else {
+                            return Err(e).with_context(|| format!("Failed to execute migration: {}", &trimmed[..trimmed.len().min(80)]));
+                        }
+                    }
+                }
             }
         }
     }

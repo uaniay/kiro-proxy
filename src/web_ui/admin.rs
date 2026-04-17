@@ -40,6 +40,7 @@ pub async fn list_users_handler(
             "status": u.status,
             "created_at": u.created_at,
             "last_login": u.last_login,
+            "pool_allowed": u.pool_allowed,
         })
     }).collect();
 
@@ -492,4 +493,34 @@ pub async fn share_users_handler(
     state.pool_scheduler.invalidate_cache().await;
 
     Ok(Json(json!({ "status": "ok", "affected": affected })))
+}
+
+#[derive(Deserialize)]
+pub struct TogglePoolAllowedRequest {
+    pub allowed: bool,
+}
+
+pub async fn toggle_pool_allowed_handler(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+    request: Request<axum::body::Body>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_admin(&request)?;
+    let db_pool = state.db.as_ref().ok_or_else(|| {
+        ApiError::ConfigError("Database not configured".to_string())
+    })?;
+
+    let body_bytes = axum::body::to_bytes(request.into_body(), 1024)
+        .await
+        .map_err(|e| ApiError::ValidationError(format!("Failed to read body: {}", e)))?;
+    let body: TogglePoolAllowedRequest = serde_json::from_slice(&body_bytes)
+        .map_err(|e| ApiError::ValidationError(format!("Invalid JSON: {}", e)))?;
+
+    let updated = db::toggle_pool_allowed(db_pool, &user_id, body.allowed).await
+        .map_err(|e| ApiError::Internal(e))?;
+    if !updated {
+        return Err(ApiError::NotFound("User not found".to_string()));
+    }
+
+    Ok(Json(json!({ "status": "ok", "pool_allowed": body.allowed })))
 }

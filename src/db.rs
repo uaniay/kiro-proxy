@@ -22,6 +22,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         include_str!("../migrations/003_user_status.sql"),
         include_str!("../migrations/004_token_enabled.sql"),
         include_str!("../migrations/005_token_shared.sql"),
+        include_str!("../migrations/006_pool_allowed.sql"),
     ] {
         for statement in schema.split(';') {
             let trimmed = statement.trim();
@@ -54,10 +55,10 @@ pub async fn create_user(pool: &SqlitePool, email: &str, name: &str, password_ha
     // First user becomes admin
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
         .fetch_one(pool).await?;
-    let (role, status) = if count.0 == 0 { ("admin", "active") } else { ("user", "pending") };
+    let (role, status, pool_allowed) = if count.0 == 0 { ("admin", "active", 1) } else { ("user", "pending", 0) };
 
-    sqlx::query("INSERT INTO users (id, email, name, role, status, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .bind(&id).bind(email).bind(name).bind(role).bind(status).bind(password_hash).bind(&now)
+    sqlx::query("INSERT INTO users (id, email, name, role, status, password_hash, created_at, pool_allowed) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(&id).bind(email).bind(name).bind(role).bind(status).bind(password_hash).bind(&now).bind(pool_allowed)
         .execute(pool).await
         .context("Failed to create user")?;
 
@@ -65,21 +66,21 @@ pub async fn create_user(pool: &SqlitePool, email: &str, name: &str, password_ha
 }
 
 pub async fn get_user_by_email(pool: &SqlitePool, email: &str) -> Result<Option<UserRow>> {
-    let row = sqlx::query_as::<_, UserRow>("SELECT id, email, name, role, status, password_hash, created_at, last_login FROM users WHERE email = ?")
+    let row = sqlx::query_as::<_, UserRow>("SELECT id, email, name, role, status, password_hash, created_at, last_login, pool_allowed FROM users WHERE email = ?")
         .bind(email)
         .fetch_optional(pool).await?;
     Ok(row)
 }
 
 pub async fn get_user_by_id(pool: &SqlitePool, id: &str) -> Result<Option<UserRow>> {
-    let row = sqlx::query_as::<_, UserRow>("SELECT id, email, name, role, status, password_hash, created_at, last_login FROM users WHERE id = ?")
+    let row = sqlx::query_as::<_, UserRow>("SELECT id, email, name, role, status, password_hash, created_at, last_login, pool_allowed FROM users WHERE id = ?")
         .bind(id)
         .fetch_optional(pool).await?;
     Ok(row)
 }
 
 pub async fn list_users(pool: &SqlitePool) -> Result<Vec<UserRow>> {
-    let rows = sqlx::query_as::<_, UserRow>("SELECT id, email, name, role, status, password_hash, created_at, last_login FROM users ORDER BY created_at")
+    let rows = sqlx::query_as::<_, UserRow>("SELECT id, email, name, role, status, password_hash, created_at, last_login, pool_allowed FROM users ORDER BY created_at")
         .fetch_all(pool).await?;
     Ok(rows)
 }
@@ -109,10 +110,16 @@ pub async fn reject_user(pool: &SqlitePool, id: &str) -> Result<bool> {
     Ok(result.rows_affected() > 0)
 }
 
-pub async fn get_user_status(pool: &SqlitePool, user_id: &str) -> Result<Option<String>> {
-    let row: Option<(String,)> = sqlx::query_as("SELECT status FROM users WHERE id = ?")
+pub async fn get_user_status(pool: &SqlitePool, user_id: &str) -> Result<Option<(String, bool)>> {
+    let row: Option<(String, bool)> = sqlx::query_as("SELECT status, pool_allowed FROM users WHERE id = ?")
         .bind(user_id).fetch_optional(pool).await?;
-    Ok(row.map(|r| r.0))
+    Ok(row)
+}
+
+pub async fn toggle_pool_allowed(pool: &SqlitePool, user_id: &str, allowed: bool) -> Result<bool> {
+    let result = sqlx::query("UPDATE users SET pool_allowed = ? WHERE id = ?")
+        .bind(allowed as i32).bind(user_id).execute(pool).await?;
+    Ok(result.rows_affected() > 0)
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -125,6 +132,7 @@ pub struct UserRow {
     pub password_hash: String,
     pub created_at: String,
     pub last_login: Option<String>,
+    pub pool_allowed: bool,
 }
 
 // ── Sessions ─────────────────────────────────────────────────

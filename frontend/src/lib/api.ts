@@ -50,4 +50,6 @@ export const api = {
     request(`/admin/accounts/${id}`, { method: 'PATCH', body: JSON.stringify({ type, enabled }) }),
   shareUsers: (user_ids: string[], shared: boolean) =>
     request('/admin/users/share', { method: 'POST', body: JSON.stringify({ user_ids, shared }) }),
+  togglePoolAllowed: (id: string, allowed: boolean) =>
+    request(`/admin/users/${id}/pool-allowed`, { method: 'POST', body: JSON.stringify({ allowed }) }),
 };

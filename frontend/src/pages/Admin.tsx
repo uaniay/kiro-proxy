@@ -41,6 +41,11 @@ export default function Admin() {
   const approveUser = async (id: string) => { await api.approveUser(id); loadUsers(); };
   const rejectUser = async (id: string) => { if (!confirm('Reject this user?')) return; await api.rejectUser(id); loadUsers(); };
 
+  const togglePoolAllowed = async (id: string, current: boolean) => {
+    await api.togglePoolAllowed(id, !current);
+    loadUsers();
+  };
+
   const startPoolSetup = async () => {
     if (!newPool.label) return;
     try {
@@ -138,6 +143,7 @@ export default function Admin() {
                   <TableHead>Name</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Pool</TableHead>
                   <TableHead>Last Login</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
@@ -149,6 +155,15 @@ export default function Admin() {
                     <TableCell className="text-muted-foreground">{u.name}</TableCell>
                     <TableCell><Badge variant={u.role === 'admin' ? 'default' : 'secondary'}>{u.role}</Badge></TableCell>
                     <TableCell><Badge variant={u.status === 'active' ? 'default' : u.status === 'pending' ? 'outline' : 'destructive'}>{u.status}</Badge></TableCell>
+                    <TableCell>
+                      {u.role === 'admin' ? (
+                        <Badge variant="default">Allowed</Badge>
+                      ) : (
+                        <Button variant="ghost" size="sm" onClick={() => togglePoolAllowed(u.id, u.pool_allowed)}>
+                          <Badge variant={u.pool_allowed ? 'default' : 'secondary'}>{u.pool_allowed ? 'Allowed' : 'Denied'}</Badge>
+                        </Button>
+                      )}
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{u.last_login ? new Date(u.last_login).toLocaleDateString() : 'Never'}</TableCell>
                     <TableCell className="flex gap-1">
                       {u.status === 'pending' && <>

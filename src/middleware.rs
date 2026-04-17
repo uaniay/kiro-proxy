@@ -77,14 +77,14 @@ pub async fn auth_middleware(
     };
 
     // Check user status — only active users can use the API
-    let user_status = db::get_user_status(db_pool, &user_id).await
+    let user_info = db::get_user_status(db_pool, &user_id).await
         .map_err(|e| ApiError::Internal(e))?;
-    match user_status.as_deref() {
-        Some("active") => {}
+    let pool_allowed = match user_info.as_ref().map(|(s, _)| s.as_str()) {
+        Some("active") => user_info.unwrap().1,
         Some("pending") => return Err(ApiError::Forbidden("Account pending admin approval".to_string())),
         Some("rejected") => return Err(ApiError::Forbidden("Account has been rejected".to_string())),
         _ => return Err(ApiError::AuthError("Invalid API key".to_string())),
-    }
+    };
 
     // 3. Resolve Kiro token for this user
     let default_region = state.config.read().unwrap_or_else(|p| p.into_inner()).kiro_region.clone();
@@ -136,15 +136,17 @@ pub async fn auth_middleware(
         }
     }
 
-    // 4. Fallback: pool scheduler
-    if let Some(pool_token) = state.pool_scheduler.next_token(db_pool, &default_region).await {
-        request.extensions_mut().insert(KiroCreds {
-            user_id: Some(user_id),
-            api_key_id: Some(key_id.clone()),
-            access_token: pool_token.access_token,
-            region: pool_token.region,
-        });
-        return Ok(next.run(request).await);
+    // 4. Fallback: pool scheduler (only if user is allowed)
+    if pool_allowed {
+        if let Some(pool_token) = state.pool_scheduler.next_token(db_pool, &default_region).await {
+            request.extensions_mut().insert(KiroCreds {
+                user_id: Some(user_id),
+                api_key_id: Some(key_id.clone()),
+                access_token: pool_token.access_token,
+                region: pool_token.region,
+            });
+            return Ok(next.run(request).await);
+        }
     }
 
     // 5. Last resort: try global AuthManager (if enabled)

@@ -31,36 +31,48 @@ static DOT_WITH_DATE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(claude-(?:\d+\.\d+-)?(?:haiku|sonnet|opus)(?:-\d+\.\d+)?)-\d{8}$").unwrap()
 });
 
+// Maps normalized model names that Kiro doesn't support to the nearest supported version.
+// Update this table when Kiro adds support for new models.
+static MODEL_ALIASES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
+    let mut m = HashMap::new();
+    m.insert("claude-opus-4.7",   "claude-opus-4.6");
+    m.insert("claude-sonnet-4.6", "claude-sonnet-4.5");
+    m.insert("claude-haiku-4.6",  "claude-haiku-4.5");
+    m
+});
+
 /// Normalize model name to Kiro format
 pub fn normalize_model_name(name: &str) -> String {
     if name.is_empty() {
         return name.to_string();
     }
     let name_lower = name.to_lowercase();
-    if let Some(caps) = STANDARD_PATTERN.captures(&name_lower) {
+    let normalized = if let Some(caps) = STANDARD_PATTERN.captures(&name_lower) {
         let base = caps.get(1).unwrap().as_str();
         let minor = caps.get(2).unwrap().as_str();
-        return format!("{}.{}", base, minor);
-    }
-    if let Some(caps) = NO_MINOR_PATTERN.captures(&name_lower) {
-        return caps.get(1).unwrap().as_str().to_string();
-    }
-    if let Some(caps) = LEGACY_PATTERN.captures(&name_lower) {
+        format!("{}.{}", base, minor)
+    } else if let Some(caps) = NO_MINOR_PATTERN.captures(&name_lower) {
+        caps.get(1).unwrap().as_str().to_string()
+    } else if let Some(caps) = LEGACY_PATTERN.captures(&name_lower) {
         let prefix = caps.get(1).unwrap().as_str();
         let major = caps.get(2).unwrap().as_str();
         let minor = caps.get(3).unwrap().as_str();
         let family = caps.get(4).unwrap().as_str();
-        return format!("{}-{}.{}-{}", prefix, major, minor, family);
-    }
-    if let Some(caps) = DOT_WITH_DATE_PATTERN.captures(&name_lower) {
-        return caps.get(1).unwrap().as_str().to_string();
-    }
-    if name_lower.starts_with("claude") || name_lower == "auto" {
+        format!("{}-{}.{}-{}", prefix, major, minor, family)
+    } else if let Some(caps) = DOT_WITH_DATE_PATTERN.captures(&name_lower) {
+        caps.get(1).unwrap().as_str().to_string()
+    } else if name_lower.starts_with("claude") || name_lower == "auto" {
         name.to_string()
     } else {
         tracing::warn!(original = %name, "Unrecognized model name, defaulting to auto");
         "auto".to_string()
+    };
+
+    if let Some(&alias) = MODEL_ALIASES.get(normalized.as_str()) {
+        tracing::info!(original = %name, mapped_to = %alias, "Model alias applied");
+        return alias.to_string();
     }
+    normalized
 }
 
 // ==================================================================================================

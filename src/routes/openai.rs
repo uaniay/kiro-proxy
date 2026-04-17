@@ -19,10 +19,13 @@ pub(crate) async fn get_models_handler() -> Result<Json<ModelList>, ApiError> {
     let models = vec![
         OpenAIModel::new("claude-sonnet-4".to_string()),
         OpenAIModel::new("claude-sonnet-4-5".to_string()),
+        OpenAIModel::new("claude-sonnet-4-6".to_string()),
         OpenAIModel::new("claude-haiku-4".to_string()),
         OpenAIModel::new("claude-haiku-4-5".to_string()),
+        OpenAIModel::new("claude-haiku-4-6".to_string()),
         OpenAIModel::new("claude-opus-4".to_string()),
         OpenAIModel::new("claude-opus-4-6".to_string()),
+        OpenAIModel::new("claude-opus-4-7".to_string()),
     ];
     Ok(Json(ModelList::new(models)))
 }

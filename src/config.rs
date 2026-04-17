@@ -113,6 +113,33 @@ impl Config {
         Ok(config)
     }
 
+    pub fn with_defaults() -> Self {
+        Config {
+            server_host: "0.0.0.0".to_string(),
+            server_port: 9199,
+            proxy_api_key: String::new(),
+            database_url: None,
+            kiro_region: "us-east-1".to_string(),
+            kiro_sso_region: None,
+            kiro_refresh_token: None,
+            kiro_client_id: None,
+            kiro_client_secret: None,
+            token_refresh_threshold: 300,
+            first_token_timeout: 15,
+            http_max_connections: 20,
+            http_connect_timeout: 30,
+            http_request_timeout: 300,
+            http_max_retries: 3,
+            debug_mode: DebugMode::Off,
+            log_level: "info".to_string(),
+            tool_description_max_length: 10000,
+            fake_reasoning_enabled: false,
+            fake_reasoning_max_tokens: 4000,
+            fake_reasoning_handling: FakeReasoningHandling::AsReasoningContent,
+            truncation_recovery: true,
+        }
+    }
+
     pub fn validate(&self) -> Result<()> {
         if self.proxy_api_key.len() < 16 {
             anyhow::bail!("PROXY_API_KEY must be at least 16 characters for security");

@@ -19,6 +19,7 @@ Lightweight Kiro API proxy with OpenAI and Anthropic compatible endpoints. Suppo
 - **User Approval Workflow** — New users require admin approval before accessing the API
 - **Retry Logic** — Exponential backoff on 429/5xx errors
 - **Truncation Recovery** — Detects and recovers from truncated API responses
+- **Conversation Logging** — Optional async logging of full request/response bodies with admin viewer (zero proxy latency impact)
 - **Backward Compatible** — Works as a simple single-user proxy without a database
 
 ## Architecture
@@ -126,6 +127,7 @@ cargo run --release
 | `SERVER_HOST` | No | `0.0.0.0` | Listen address |
 | `SERVER_PORT` | No | `9199` | Listen port |
 | `LOG_LEVEL` | No | `info` | Log level (trace/debug/info/warn/error) |
+| `ENABLE_CONVERSATION_LOG` | No | `false` | Enable full request/response logging (set `true` to enable) |
 
 ## Multi-user Mode
 
@@ -149,7 +151,7 @@ When `DATABASE_URL` is set, the proxy enables full multi-user functionality.
 
 ### Admin Operations
 
-The admin panel is at `/_ui/admin` with four tabs:
+The admin panel is at `/_ui/admin` with five tabs:
 
 #### Users Tab
 - View all registered users with status (active/pending/rejected)
@@ -173,6 +175,14 @@ The admin panel is at `/_ui/admin` with four tabs:
   - Shared tokens participate in pool round-robin alongside admin pool entries
   - The original user still uses their own token with highest priority
   - Click "Unshare" to remove from pool
+
+#### Conversations Tab
+- View full request/response logs for all API calls (requires `ENABLE_CONVERSATION_LOG=true`)
+- Search by content keyword or filter by API Key ID
+- Paginated list (default 10 per page) showing time, user, model, API type, stream mode, token counts, duration
+- Click any row to expand full request body, response body, and sanitized headers (sensitive headers like Authorization/Cookie are stripped)
+- Delete individual conversation logs
+- Admin users can also click "Logs" on any API key in the Profile page to jump directly to that key's conversation history
 
 ### Token Resolution Priority
 
@@ -304,6 +314,9 @@ curl http://localhost:9199/v1/models
 | GET | `/admin/usage` | Admin | Usage statistics |
 | GET | `/admin/accounts` | Admin | List all Kiro accounts |
 | PATCH | `/admin/accounts/:id` | Admin | Toggle account enabled/disabled |
+| GET | `/admin/conversations` | Admin | List conversation logs (with search/pagination) |
+| GET | `/admin/conversations/:id` | Admin | Get full conversation detail |
+| DELETE | `/admin/conversations/:id` | Admin | Delete conversation log |
 
 ## Project Structure
 
@@ -312,6 +325,7 @@ kiro-proxy/
 ├── src/
 │   ├── main.rs              # Entry point
 │   ├── config.rs             # Environment configuration
+│   ├── conversation_log.rs   # Header sanitization for conversation logging
 │   ├── error.rs              # Error types
 │   ├── db.rs                 # SQLite database layer
 │   ├── pool.rs               # Token pool round-robin scheduler
@@ -328,7 +342,7 @@ kiro-proxy/
 │   ├── routes/               # API route handlers
 │   └── web_ui/               # Web UI backend (auth, keys, kiro setup, admin)
 ├── frontend/                 # React + Vite + Tailwind + shadcn/ui
-├── migrations/               # SQLite schema migrations (001-005)
+├── migrations/               # SQLite schema migrations (001-007)
 ├── Dockerfile                # Multi-stage build
 ├── docker-compose.yml
 └── .env.example

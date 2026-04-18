@@ -19,6 +19,7 @@
 - **用户审批流程** — 新用户注册后需管理员审批才能使用 API
 - **重试机制** — 429/5xx 错误指数退避重试
 - **截断恢复** — 检测并恢复被截断的 API 响应
+- **对话记录** — 可选的异步请求/响应完整记录，带管理员查看界面（对代理转发零延迟影响）
 - **向后兼容** — 不配置数据库时作为简单的单用户代理运行
 
 ## 架构
@@ -126,6 +127,7 @@ cargo run --release
 | `SERVER_HOST` | 否 | `0.0.0.0` | 监听地址 |
 | `SERVER_PORT` | 否 | `9199` | 监听端口 |
 | `LOG_LEVEL` | 否 | `info` | 日志级别（trace/debug/info/warn/error） |
+| `ENABLE_CONVERSATION_LOG` | 否 | `false` | 启用完整请求/响应记录（设为 `true` 启用） |
 
 ## 多用户模式
 
@@ -149,7 +151,7 @@ cargo run --release
 
 ### 管理员操作
 
-管理员面板位于 `/_ui/admin`，包含四个 Tab：
+管理员面板位于 `/_ui/admin`，包含五个 Tab：
 
 #### Users（用户管理）
 - 查看所有注册用户及状态（active/pending/rejected）
@@ -173,6 +175,14 @@ cargo run --release
   - 共享的 Token 与管理员 Pool 条目一起参与轮询
   - 原用户仍然优先使用自己的 Token
   - 点击"Unshare"取消共享
+
+#### Conversations（对话记录）
+- 查看所有 API 请求/响应的完整记录（需设置 `ENABLE_CONVERSATION_LOG=true`）
+- 支持按内容关键词搜索或按 API Key ID 筛选
+- 分页列表（默认每页 10 条），显示时间、用户、模型、API 类型、流式模式、Token 数、耗时
+- 点击任意行展开完整的请求体、响应体和脱敏后的请求头（Authorization、Cookie 等敏感头已自动过滤）
+- 支持删除单条对话记录
+- 管理员在 Profile 页面的 API Key 列表中可点击"Logs"直接跳转到该 Key 的对话记录
 
 ### Token 解析优先级
 
@@ -304,6 +314,9 @@ curl http://localhost:9199/v1/models
 | GET | `/admin/usage` | Admin | 用量统计 |
 | GET | `/admin/accounts` | Admin | 列出所有 Kiro 账号 |
 | PATCH | `/admin/accounts/:id` | Admin | 切换账号启用/禁用 |
+| GET | `/admin/conversations` | Admin | 列出对话记录（支持搜索/分页） |
+| GET | `/admin/conversations/:id` | Admin | 获取完整对话详情 |
+| DELETE | `/admin/conversations/:id` | Admin | 删除对话记录 |
 
 ## 项目结构
 
@@ -312,6 +325,7 @@ kiro-proxy/
 ├── src/
 │   ├── main.rs              # 入口
 │   ├── config.rs             # 环境变量配置
+│   ├── conversation_log.rs   # 对话记录请求头脱敏
 │   ├── error.rs              # 错误类型
 │   ├── db.rs                 # SQLite 数据库层
 │   ├── pool.rs               # Token Pool 轮询调度器
@@ -328,7 +342,7 @@ kiro-proxy/
 │   ├── routes/               # API 路由处理
 │   └── web_ui/               # Web UI 后端（认证、密钥、Kiro 绑定、管理）
 ├── frontend/                 # React + Vite + Tailwind + shadcn/ui
-├── migrations/               # SQLite 数据库迁移（001-005）
+├── migrations/               # SQLite 数据库迁移（001-007）
 ├── Dockerfile                # 多阶段构建
 ├── docker-compose.yml
 └── .env.example

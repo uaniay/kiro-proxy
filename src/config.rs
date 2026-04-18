@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 #[derive(Clone, Debug, PartialEq)]
+#[allow(dead_code)]
 pub enum FakeReasoningHandling {
     AsReasoningContent,
     Remove,
@@ -52,6 +53,7 @@ pub struct Config {
     pub tool_description_max_length: usize,
     pub fake_reasoning_enabled: bool,
     pub fake_reasoning_max_tokens: u32,
+    #[allow(dead_code)]
     pub fake_reasoning_handling: FakeReasoningHandling,
 
     // Truncation recovery
@@ -119,6 +121,7 @@ impl Config {
         Ok(config)
     }
 
+    #[allow(dead_code)]
     pub fn with_defaults() -> Self {
         Config {
             server_host: "0.0.0.0".to_string(),

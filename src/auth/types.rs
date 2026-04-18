@@ -10,7 +10,9 @@ pub enum AuthType {
 #[derive(Debug, Clone)]
 pub struct Credentials {
     pub refresh_token: String,
+    #[allow(dead_code)]
     pub access_token: Option<String>,
+    #[allow(dead_code)]
     pub expires_at: Option<DateTime<Utc>>,
     pub profile_arn: Option<String>,
     pub region: String,

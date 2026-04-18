@@ -73,13 +73,6 @@ pub async fn get_user_by_email(pool: &SqlitePool, email: &str) -> Result<Option<
     Ok(row)
 }
 
-pub async fn get_user_by_id(pool: &SqlitePool, id: &str) -> Result<Option<UserRow>> {
-    let row = sqlx::query_as::<_, UserRow>("SELECT id, email, name, role, status, password_hash, created_at, last_login, pool_allowed FROM users WHERE id = ?")
-        .bind(id)
-        .fetch_optional(pool).await?;
-    Ok(row)
-}
-
 pub async fn list_users(pool: &SqlitePool) -> Result<Vec<UserRow>> {
     let rows = sqlx::query_as::<_, UserRow>("SELECT id, email, name, role, status, password_hash, created_at, last_login, pool_allowed FROM users ORDER BY created_at")
         .fetch_all(pool).await?;
@@ -171,6 +164,7 @@ pub async fn cleanup_expired_sessions(pool: &SqlitePool) -> Result<u64> {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct SessionRow {
     pub id: String,
     pub user_id: String,
@@ -199,12 +193,6 @@ pub async fn create_api_key(pool: &SqlitePool, user_id: &str, key_hash: &str, ke
     Ok(id)
 }
 
-pub async fn list_api_keys(pool: &SqlitePool, user_id: &str) -> Result<Vec<ApiKeyRow>> {
-    let rows = sqlx::query_as::<_, ApiKeyRow>("SELECT id, user_id, key_prefix, name, last_used, created_at FROM api_keys WHERE user_id = ? ORDER BY created_at")
-        .bind(user_id).fetch_all(pool).await?;
-    Ok(rows)
-}
-
 pub async fn get_api_key_by_hash(pool: &SqlitePool, key_hash: &str) -> Result<Option<(String, String)>> {
     let row: Option<(String, String)> = sqlx::query_as("SELECT id, user_id FROM api_keys WHERE key_hash = ?")
         .bind(key_hash).fetch_optional(pool).await?;
@@ -217,14 +205,8 @@ pub async fn delete_api_key(pool: &SqlitePool, key_id: &str, user_id: &str) -> R
     Ok(result.rows_affected() > 0)
 }
 
-pub async fn touch_api_key(pool: &SqlitePool, key_id: &str) -> Result<()> {
-    let now = Utc::now().to_rfc3339();
-    sqlx::query("UPDATE api_keys SET last_used = ? WHERE id = ?")
-        .bind(&now).bind(key_id).execute(pool).await?;
-    Ok(())
-}
-
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+#[allow(dead_code)]
 pub struct ApiKeyRow {
     pub id: String,
     pub user_id: String,
@@ -331,6 +313,7 @@ pub async fn get_shared_kiro_tokens(pool: &SqlitePool) -> Result<Vec<KiroTokenRo
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct KiroTokenRow {
     pub user_id: String,
     pub refresh_token: String,

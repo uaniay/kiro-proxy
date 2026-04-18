@@ -9,7 +9,6 @@
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, RwLock};
-use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 // ==================================================================================================
@@ -183,6 +182,7 @@ impl TruncationState {
         );
     }
 
+    #[allow(dead_code)]
     pub fn get_tool_truncation(&self, tool_call_id: &str) -> Option<ToolTruncationEntry> {
         self.tool_cache.write().unwrap().remove(tool_call_id)
     }
@@ -199,6 +199,7 @@ impl TruncationState {
             .insert(hash.clone(), ContentTruncationEntry { content_hash: hash });
     }
 
+    #[allow(dead_code)]
     pub fn get_content_truncation(&self, content: &str) -> Option<ContentTruncationEntry> {
         let hash = content_hash(content);
         self.content_cache.write().unwrap().remove(&hash)
@@ -219,24 +220,6 @@ pub fn content_hash(content: &str) -> String {
 pub static TRUNCATION_STATE: LazyLock<TruncationState> = LazyLock::new(TruncationState::new);
 
 // ==================================================================================================
-// Recovery Message Generation
-// ==================================================================================================
-
-/// Text prepended to tool results when the tool call was truncated.
-pub fn truncation_tool_result_text() -> &'static str {
-    "[API Limitation] Your previous tool call was truncated by the API before it could complete. \
-     The tool was NOT executed because the arguments were cut off mid-stream. \
-     Do NOT repeat the exact same operation - it will be truncated again at the same point. \
-     Instead, break the work into smaller steps (e.g., write smaller sections of a file at a time)."
-}
-
-/// Text for synthetic user message when content was truncated.
-pub fn truncation_user_message_text() -> &'static str {
-    "[System Notice] Your previous response was truncated by the API before it could complete. \
-     The content was cut off mid-stream. Consider breaking your response into smaller parts."
-}
-
-// ==================================================================================================
 // System Prompt Addition
 // ==================================================================================================
 
@@ -254,184 +237,6 @@ pub fn get_truncation_recovery_system_addition(truncation_recovery: bool) -> Str
      When you see these notices, acknowledge the limitation and adjust your approach \
      (e.g., break large operations into smaller steps)."
         .to_string()
-}
-
-// ==================================================================================================
-// Injection Functions
-// ==================================================================================================
-
-/// Inject truncation recovery messages into OpenAI-format messages.
-///
-/// Scans for:
-/// 1. Tool results with matching truncated tool_call_ids → prepend notice
-/// 2. Assistant messages with truncated content → append synthetic user message
-pub fn inject_openai_truncation_recovery(messages: &mut Vec<Value>) {
-    let mut insertions: Vec<(usize, Value)> = Vec::new();
-
-    for (idx, msg) in messages.iter_mut().enumerate() {
-        let role = msg
-            .get("role")
-            .and_then(|r| r.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        // Check tool result messages
-        if role == "tool" {
-            let tool_call_id = msg
-                .get("tool_call_id")
-                .and_then(|id| id.as_str())
-                .map(|s| s.to_string());
-            if let Some(tool_call_id) = tool_call_id {
-                if let Some(_entry) = TRUNCATION_STATE.get_tool_truncation(&tool_call_id) {
-                    tracing::info!(
-                        "Injecting truncation recovery for OpenAI tool result: tool_call_id={}",
-                        tool_call_id
-                    );
-                    // Prepend notice to content
-                    let existing_content = msg
-                        .get("content")
-                        .and_then(|c| c.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let new_content =
-                        format!("{}\n\n{}", truncation_tool_result_text(), existing_content);
-                    msg["content"] = Value::String(new_content);
-                    msg["is_error"] = Value::Bool(true);
-                }
-            }
-        }
-
-        // Check assistant messages for content truncation
-        if role == "assistant" {
-            let content_str = msg
-                .get("content")
-                .and_then(|c| c.as_str())
-                .unwrap_or("")
-                .to_string();
-            if !content_str.is_empty() {
-                if let Some(_entry) = TRUNCATION_STATE.get_content_truncation(&content_str) {
-                    tracing::info!(
-                        "Injecting truncation recovery for OpenAI content truncation after message index {}",
-                        idx
-                    );
-                    // Insert a synthetic user message after this assistant message
-                    let synthetic = serde_json::json!({
-                        "role": "user",
-                        "content": truncation_user_message_text()
-                    });
-                    insertions.push((idx + 1, synthetic));
-                }
-            }
-        }
-    }
-
-    // Apply insertions in reverse order to preserve indices
-    for (idx, msg) in insertions.into_iter().rev() {
-        if idx <= messages.len() {
-            messages.insert(idx, msg);
-        }
-    }
-}
-
-/// Inject truncation recovery messages into Anthropic-format messages.
-///
-/// Scans for:
-/// 1. Tool results in content blocks with matching tool_use_ids → modify content
-/// 2. Assistant messages with truncated content → append synthetic user message
-pub fn inject_anthropic_truncation_recovery(messages: &mut Vec<Value>) {
-    let mut insertions: Vec<(usize, Value)> = Vec::new();
-
-    for (idx, msg) in messages.iter_mut().enumerate() {
-        let role = msg
-            .get("role")
-            .and_then(|r| r.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        if role == "user" {
-            // Check content blocks for tool_result entries
-            if let Some(content) = msg.get_mut("content") {
-                if let Some(blocks) = content.as_array_mut() {
-                    for block in blocks.iter_mut() {
-                        if block.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
-                            let tool_use_id = block
-                                .get("tool_use_id")
-                                .and_then(|id| id.as_str())
-                                .map(|s| s.to_string());
-                            if let Some(tool_use_id) = tool_use_id {
-                                if let Some(_entry) =
-                                    TRUNCATION_STATE.get_tool_truncation(&tool_use_id)
-                                {
-                                    tracing::info!(
-                                        "Injecting truncation recovery for Anthropic tool result: tool_use_id={}",
-                                        tool_use_id
-                                    );
-                                    // Modify content
-                                    let existing = block
-                                        .get("content")
-                                        .and_then(|c| c.as_str())
-                                        .unwrap_or("")
-                                        .to_string();
-                                    let new_content = format!(
-                                        "{}\n\n{}",
-                                        truncation_tool_result_text(),
-                                        existing
-                                    );
-                                    block["content"] = Value::String(new_content);
-                                    block["is_error"] = Value::Bool(true);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Check assistant messages for content truncation
-        if role == "assistant" {
-            let content_text = extract_anthropic_text_content(msg);
-            if !content_text.is_empty() {
-                if let Some(_entry) = TRUNCATION_STATE.get_content_truncation(&content_text) {
-                    tracing::info!(
-                        "Injecting truncation recovery for Anthropic content truncation after message index {}",
-                        idx
-                    );
-                    let synthetic = serde_json::json!({
-                        "role": "user",
-                        "content": truncation_user_message_text()
-                    });
-                    insertions.push((idx + 1, synthetic));
-                }
-            }
-        }
-    }
-
-    // Apply insertions in reverse order
-    for (idx, msg) in insertions.into_iter().rev() {
-        if idx <= messages.len() {
-            messages.insert(idx, msg);
-        }
-    }
-}
-
-/// Extract text content from an Anthropic message for hashing.
-fn extract_anthropic_text_content(msg: &Value) -> String {
-    // Content can be a string or array of blocks
-    if let Some(s) = msg.get("content").and_then(|c| c.as_str()) {
-        return s.to_string();
-    }
-    if let Some(blocks) = msg.get("content").and_then(|c| c.as_array()) {
-        let mut text = String::new();
-        for block in blocks {
-            if block.get("type").and_then(|t| t.as_str()) == Some("text") {
-                if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
-                    text.push_str(t);
-                }
-            }
-        }
-        return text;
-    }
-    String::new()
 }
 
 // ==================================================================================================

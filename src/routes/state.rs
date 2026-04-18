@@ -3,7 +3,6 @@ use std::sync::RwLock;
 use std::sync::atomic::AtomicBool;
 
 use dashmap::DashMap;
-use uuid::Uuid;
 
 use crate::auth::AuthManager;
 use crate::config::Config;

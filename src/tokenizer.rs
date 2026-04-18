@@ -1,5 +1,4 @@
-use crate::models::anthropic::AnthropicTool;
-use crate::models::openai::{ChatMessage, Tool};
+use crate::models::openai::ChatMessage;
 use serde_json::Value;
 
 /// Approximate token count using character-based estimation.
@@ -28,27 +27,5 @@ pub fn count_message_tokens(messages: &[ChatMessage]) -> i32 {
         }
     }
     total += 3; // final overhead
-    total
-}
-
-/// Count tokens in tool definitions (OpenAI format)
-pub fn count_tools_tokens(tools: &[Tool]) -> i32 {
-    let mut total = 0;
-    for tool in tools {
-        total += 4; // per-tool overhead
-        let json = serde_json::to_string(tool).unwrap_or_default();
-        total += count_tokens(&json, false);
-    }
-    total
-}
-
-/// Count tokens in Anthropic tool definitions
-pub fn count_anthropic_tools_tokens(tools: &[AnthropicTool]) -> i32 {
-    let mut total = 0;
-    for tool in tools {
-        total += 4;
-        let json = serde_json::to_string(tool).unwrap_or_default();
-        total += count_tokens(&json, false);
-    }
     total
 }

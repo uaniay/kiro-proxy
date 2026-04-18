@@ -19,6 +19,7 @@ pub struct PoolScheduler {
 
 /// A selected pool entry with access token and region.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct PoolToken {
     pub pool_id: String,
     pub access_token: String,

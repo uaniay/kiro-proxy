@@ -524,3 +524,80 @@ pub async fn toggle_pool_allowed_handler(
 
     Ok(Json(json!({ "status": "ok", "pool_allowed": body.allowed })))
 }
+
+// ── Conversation Logs ───────────────────────────────────────
+
+pub async fn list_conversations_handler(
+    State(state): State<AppState>,
+    request: Request<axum::body::Body>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_admin(&request)?;
+    let db_pool = state.db.as_ref().ok_or_else(|| {
+        ApiError::ConfigError("Database not configured".to_string())
+    })?;
+
+    let query: std::collections::HashMap<String, String> = request.uri().query()
+        .map(|q| q.split('&').filter_map(|pair| {
+            let mut parts = pair.splitn(2, '=');
+            let key = parts.next()?;
+            let val = parts.next().unwrap_or("");
+            Some((key.to_string(), val.to_string()))
+        }).collect())
+        .unwrap_or_default();
+
+    let offset = query.get("offset").and_then(|v| v.parse().ok()).unwrap_or(0i64);
+    let limit = query.get("limit").and_then(|v| v.parse().ok()).unwrap_or(10i64).min(100);
+
+    let (logs, total) = db::list_conversation_logs(
+        db_pool,
+        query.get("api_key_id").map(String::as_str),
+        query.get("user_id").map(String::as_str),
+        query.get("model").map(String::as_str),
+        query.get("search").map(String::as_str),
+        offset,
+        limit,
+    ).await.map_err(ApiError::Internal)?;
+
+    Ok(Json(json!({
+        "conversations": logs,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    })))
+}
+
+pub async fn get_conversation_handler(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    request: Request<axum::body::Body>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_admin(&request)?;
+    let db_pool = state.db.as_ref().ok_or_else(|| {
+        ApiError::ConfigError("Database not configured".to_string())
+    })?;
+
+    let log = db::get_conversation_log(db_pool, &id).await
+        .map_err(ApiError::Internal)?
+        .ok_or_else(|| ApiError::NotFound("Conversation not found".to_string()))?;
+
+    Ok(Json(serde_json::to_value(log).unwrap_or_default()))
+}
+
+pub async fn delete_conversation_handler(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    request: Request<axum::body::Body>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_admin(&request)?;
+    let db_pool = state.db.as_ref().ok_or_else(|| {
+        ApiError::ConfigError("Database not configured".to_string())
+    })?;
+
+    let deleted = db::delete_conversation_log(db_pool, &id).await
+        .map_err(ApiError::Internal)?;
+    if !deleted {
+        return Err(ApiError::NotFound("Conversation not found".to_string()));
+    }
+
+    Ok(Json(json!({ "status": "ok" })))
+}

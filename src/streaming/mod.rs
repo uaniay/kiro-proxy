@@ -1675,6 +1675,7 @@ pub async fn stream_kiro_to_openai(
     output_tokens_tracker: Option<std::sync::Arc<std::sync::atomic::AtomicU64>>,
     include_usage: bool,
     truncation_recovery: bool,
+    response_collector: Option<std::sync::Arc<std::sync::Mutex<String>>>,
 ) -> Result<BoxStream<'static, Result<String, ApiError>>, ApiError> {
     let completion_id = generate_completion_id();
     let created_time = chrono::Utc::now().timestamp();
@@ -1712,11 +1713,13 @@ pub async fn stream_kiro_to_openai(
     let tracker_for_stream = output_tokens_tracker.clone();
 
     // Convert to OpenAI chunks
+    let collector_for_stream = response_collector.clone();
     let openai_stream = kiro_stream.filter_map(move |event_result| {
         let completion_id = completion_id_clone.clone();
         let model = model_clone.clone();
         let state = state.clone();
         let tracker = tracker_for_stream.clone();
+        let collector = collector_for_stream.clone();
 
         async move {
             match event_result {
@@ -1728,6 +1731,9 @@ pub async fn stream_kiro_to_openai(
                             if let Some(content) = event.content {
                                 // Accumulate text for accurate token counting
                                 state.accumulated_text.push_str(&content);
+                                if let Some(ref c) = collector {
+                                    if let Ok(mut buf) = c.lock() { buf.push_str(&content); }
+                                }
 
                                 let delta = ChatCompletionChunkDelta {
                                     role: if state.first_chunk {
@@ -2048,6 +2054,7 @@ pub async fn stream_kiro_to_anthropic(
     input_tokens: i32,
     output_tokens_tracker: Option<std::sync::Arc<std::sync::atomic::AtomicU64>>,
     truncation_recovery: bool,
+    response_collector: Option<std::sync::Arc<std::sync::Mutex<String>>>,
 ) -> Result<BoxStream<'static, Result<String, ApiError>>, ApiError> {
     let message_id = generate_anthropic_message_id();
     let model = model.to_string();
@@ -2102,10 +2109,12 @@ pub async fn stream_kiro_to_anthropic(
     let tracker_for_final = output_tokens_tracker.clone();
 
     // Convert Kiro events to Anthropic events
+    let collector_for_stream = response_collector.clone();
     let anthropic_stream = kiro_stream.filter_map(move |event_result| {
         let _model = _model_clone.clone();
         let state = state.clone();
         let tracker = output_tokens_tracker.clone();
+        let collector = collector_for_stream.clone();
 
         async move {
             match event_result {
@@ -2117,6 +2126,9 @@ pub async fn stream_kiro_to_anthropic(
                             if let Some(content) = event.content {
                                 // Accumulate text for accurate token counting
                                 state.accumulated_text.push_str(&content);
+                                if let Some(ref c) = collector {
+                                    if let Ok(mut buf) = c.lock() { buf.push_str(&content); }
+                                }
 
                                 // Start text block if not started
                                 if !state.text_block_started {

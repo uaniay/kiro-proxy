@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ function formatNumber(n: number) {
 }
 
 export default function Profile({ user, onLogout }: { user: any; onLogout: () => void }) {
+  const navigate = useNavigate();
   const [keys, setKeys] = useState<any[]>([]);
   const [newKeyName, setNewKeyName] = useState('');
   const [createdKey, setCreatedKey] = useState('');
@@ -122,7 +124,12 @@ export default function Profile({ user, onLogout }: { user: any; onLogout: () =>
                     <TableCell className="text-right font-mono">{formatNumber(k.total_input_tokens || 0)}</TableCell>
                     <TableCell className="text-right font-mono">{formatNumber(k.total_output_tokens || 0)}</TableCell>
                     <TableCell className="text-muted-foreground text-sm">{k.last_used ? new Date(k.last_used).toLocaleDateString() : 'Never'}</TableCell>
-                    <TableCell><Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteKey(k.id)}>Delete</Button></TableCell>
+                    <TableCell className="flex gap-1">
+                      {user.role === 'admin' && (
+                        <Button variant="ghost" size="sm" onClick={() => navigate(`/admin?tab=conversations&api_key_id=${k.id}`)}>Logs</Button>
+                      )}
+                      <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteKey(k.id)}>Delete</Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

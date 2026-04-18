@@ -3,6 +3,7 @@ use std::sync::{Arc, RwLock};
 
 mod auth;
 mod config;
+mod conversation_log;
 mod converters;
 mod db;
 mod error;

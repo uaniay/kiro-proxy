@@ -52,4 +52,14 @@ export const api = {
     request('/admin/users/share', { method: 'POST', body: JSON.stringify({ user_ids, shared }) }),
   togglePoolAllowed: (id: string, allowed: boolean) =>
     request(`/admin/users/${id}/pool-allowed`, { method: 'POST', body: JSON.stringify({ allowed }) }),
+  listConversations: (params?: {
+    api_key_id?: string; user_id?: string; model?: string;
+    search?: string; offset?: number; limit?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params) Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') qs.set(k, String(v)); });
+    return request(`/admin/conversations?${qs.toString()}`);
+  },
+  getConversation: (id: string) => request(`/admin/conversations/${id}`),
+  deleteConversation: (id: string) => request(`/admin/conversations/${id}`, { method: 'DELETE' }),
 };

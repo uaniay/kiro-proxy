@@ -23,6 +23,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         include_str!("../migrations/004_token_enabled.sql"),
         include_str!("../migrations/005_token_shared.sql"),
         include_str!("../migrations/006_pool_allowed.sql"),
+        include_str!("../migrations/007_conversation_logs.sql"),
     ] {
         for statement in schema.split(';') {
             let trimmed = statement.trim();
@@ -536,4 +537,199 @@ pub struct KeyUsageStats {
     pub total_input_tokens: i64,
     pub total_output_tokens: i64,
     pub request_count: i64,
+}
+
+// ── Conversation Logs ───────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ConversationLogSummary {
+    pub id: String,
+    pub api_key_id: String,
+    pub key_prefix: String,
+    pub user_id: String,
+    pub user_email: String,
+    pub api_type: String,
+    pub model: String,
+    pub is_stream: bool,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub duration_ms: Option<i64>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ConversationLogDetail {
+    pub id: String,
+    pub api_key_id: String,
+    pub key_prefix: String,
+    pub user_id: String,
+    pub user_email: String,
+    pub api_type: String,
+    pub model: String,
+    pub is_stream: bool,
+    pub request_body: String,
+    pub response_body: Option<String>,
+    pub request_headers: Option<String>,
+    pub response_headers: Option<String>,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub duration_ms: Option<i64>,
+    pub created_at: String,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn record_conversation(
+    pool: &SqlitePool,
+    id: &str,
+    api_key_id: &str,
+    user_id: &str,
+    api_type: &str,
+    model: &str,
+    is_stream: bool,
+    request_body: &str,
+    response_body: Option<&str>,
+    request_headers: Option<&str>,
+    response_headers: Option<&str>,
+    input_tokens: i64,
+    output_tokens: i64,
+    duration_ms: Option<i64>,
+) -> Result<()> {
+    let now = Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO conversation_logs (id, api_key_id, user_id, api_type, model, is_stream, \
+         request_body, response_body, request_headers, response_headers, \
+         input_tokens, output_tokens, duration_ms, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    )
+    .bind(id).bind(api_key_id).bind(user_id).bind(api_type).bind(model)
+    .bind(is_stream as i32)
+    .bind(request_body).bind(response_body)
+    .bind(request_headers).bind(response_headers)
+    .bind(input_tokens).bind(output_tokens).bind(duration_ms).bind(&now)
+    .execute(pool).await?;
+    Ok(())
+}
+
+pub async fn list_conversation_logs(
+    pool: &SqlitePool,
+    api_key_id: Option<&str>,
+    user_id: Option<&str>,
+    model: Option<&str>,
+    search: Option<&str>,
+    offset: i64,
+    limit: i64,
+) -> Result<(Vec<ConversationLogSummary>, i64)> {
+    let mut where_clauses = Vec::new();
+    let mut binds: Vec<String> = Vec::new();
+
+    if let Some(v) = api_key_id {
+        where_clauses.push("c.api_key_id = ?");
+        binds.push(v.to_string());
+    }
+    if let Some(v) = user_id {
+        where_clauses.push("c.user_id = ?");
+        binds.push(v.to_string());
+    }
+    if let Some(v) = model {
+        where_clauses.push("c.model = ?");
+        binds.push(v.to_string());
+    }
+    if let Some(v) = search {
+        where_clauses.push("(c.request_body LIKE ? OR c.response_body LIKE ?)");
+        let pattern = format!("%{}%", v);
+        binds.push(pattern.clone());
+        binds.push(pattern);
+    }
+
+    let where_sql = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", where_clauses.join(" AND "))
+    };
+
+    let count_sql = format!(
+        "SELECT COUNT(*) as cnt FROM conversation_logs c {}",
+        where_sql
+    );
+    let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
+    for b in &binds {
+        count_query = count_query.bind(b);
+    }
+    let total = count_query.fetch_one(pool).await.unwrap_or(0);
+
+    let list_sql = format!(
+        "SELECT c.id, c.api_key_id, COALESCE(k.key_prefix, '') as key_prefix, \
+         c.user_id, COALESCE(u.email, '') as user_email, \
+         c.api_type, c.model, c.is_stream, c.input_tokens, c.output_tokens, \
+         c.duration_ms, c.created_at \
+         FROM conversation_logs c \
+         LEFT JOIN api_keys k ON c.api_key_id = k.id \
+         LEFT JOIN users u ON c.user_id = u.id \
+         {} ORDER BY c.created_at DESC LIMIT ? OFFSET ?",
+        where_sql
+    );
+    let mut list_query = sqlx::query(&list_sql);
+    for b in &binds {
+        list_query = list_query.bind(b);
+    }
+    list_query = list_query.bind(limit).bind(offset);
+
+    let rows = list_query.fetch_all(pool).await?;
+    let summaries = rows.iter().map(|r| {
+        use sqlx::Row;
+        ConversationLogSummary {
+            id: r.get("id"),
+            api_key_id: r.get("api_key_id"),
+            key_prefix: r.get("key_prefix"),
+            user_id: r.get("user_id"),
+            user_email: r.get("user_email"),
+            api_type: r.get("api_type"),
+            model: r.get("model"),
+            is_stream: r.get::<i32, _>("is_stream") != 0,
+            input_tokens: r.get("input_tokens"),
+            output_tokens: r.get("output_tokens"),
+            duration_ms: r.get("duration_ms"),
+            created_at: r.get("created_at"),
+        }
+    }).collect();
+
+    Ok((summaries, total))
+}
+
+pub async fn get_conversation_log(pool: &SqlitePool, id: &str) -> Result<Option<ConversationLogDetail>> {
+    let row = sqlx::query(
+        "SELECT c.*, COALESCE(k.key_prefix, '') as key_prefix, COALESCE(u.email, '') as user_email \
+         FROM conversation_logs c \
+         LEFT JOIN api_keys k ON c.api_key_id = k.id \
+         LEFT JOIN users u ON c.user_id = u.id \
+         WHERE c.id = ?"
+    ).bind(id).fetch_optional(pool).await?;
+
+    Ok(row.map(|r| {
+        use sqlx::Row;
+        ConversationLogDetail {
+            id: r.get("id"),
+            api_key_id: r.get("api_key_id"),
+            key_prefix: r.get("key_prefix"),
+            user_id: r.get("user_id"),
+            user_email: r.get("user_email"),
+            api_type: r.get("api_type"),
+            model: r.get("model"),
+            is_stream: r.get::<i32, _>("is_stream") != 0,
+            request_body: r.get("request_body"),
+            response_body: r.get("response_body"),
+            request_headers: r.get("request_headers"),
+            response_headers: r.get("response_headers"),
+            input_tokens: r.get("input_tokens"),
+            output_tokens: r.get("output_tokens"),
+            duration_ms: r.get("duration_ms"),
+            created_at: r.get("created_at"),
+        }
+    }))
+}
+
+pub async fn delete_conversation_log(pool: &SqlitePool, id: &str) -> Result<bool> {
+    let result = sqlx::query("DELETE FROM conversation_logs WHERE id = ?")
+        .bind(id).execute(pool).await?;
+    Ok(result.rows_affected() > 0)
 }

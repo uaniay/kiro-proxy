@@ -42,6 +42,9 @@ pub fn web_ui_routes(state: AppState) -> Router {
         .route("/api/admin/usage", get(admin::usage_handler))
         .route("/api/admin/accounts", get(admin::list_accounts_handler))
         .route("/api/admin/accounts/:id", patch(admin::toggle_account_handler))
+        // Conversation logs
+        .route("/api/admin/conversations", get(admin::list_conversations_handler))
+        .route("/api/admin/conversations/:id", get(admin::get_conversation_handler).delete(admin::delete_conversation_handler))
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             session::session_middleware,

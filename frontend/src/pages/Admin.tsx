@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -12,10 +13,13 @@ function formatNumber(n: number) {
   return n.toString();
 }
 
-type Tab = 'users' | 'usage' | 'pool' | 'accounts';
+type Tab = 'users' | 'usage' | 'pool' | 'accounts' | 'conversations';
 
 export default function Admin() {
-  const [tab, setTab] = useState<Tab>('users');
+  const [searchParams] = useSearchParams();
+  const initialTab = (searchParams.get('tab') as Tab) || 'users';
+  const initialKeyFilter = searchParams.get('api_key_id') || '';
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [users, setUsers] = useState<any[]>([]);
   const [pool, setPool] = useState<any[]>([]);
   const [usage, setUsage] = useState<any[]>([]);
@@ -24,18 +28,42 @@ export default function Admin() {
   const [newPool, setNewPool] = useState({ label: '', sso_region: 'us-east-1' });
   const [poolDevice, setPoolDevice] = useState<{ pool_id: string; device_code: string; user_code: string; verification_uri: string; verification_uri_complete?: string } | null>(null);
   const [poolPolling, setPoolPolling] = useState(false);
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [convTotal, setConvTotal] = useState(0);
+  const [convOffset, setConvOffset] = useState(0);
+  const [convSearch, setConvSearch] = useState('');
+  const [convKeyFilter, setConvKeyFilter] = useState(initialKeyFilter);
+  const [selectedConv, setSelectedConv] = useState<any>(null);
+  const [convLoading, setConvLoading] = useState(false);
 
   useEffect(() => {
     if (tab === 'users') loadUsers();
     else if (tab === 'usage') loadUsage();
     else if (tab === 'pool') loadPool();
     else if (tab === 'accounts') loadAccounts();
+    else if (tab === 'conversations') loadConversations();
   }, [tab]);
 
   const loadUsers = async () => { try { setUsers((await api.listUsers()).users); } catch {} };
   const loadPool = async () => { try { setPool((await api.listPool()).pool); } catch {} };
   const loadUsage = async () => { try { setUsage((await api.listUsage()).usage); } catch {} };
   const loadAccounts = async () => { try { setAccounts((await api.listAccounts()).accounts); } catch {} };
+  const loadConversations = async (offset = convOffset, search = convSearch, keyId = convKeyFilter) => {
+    setConvLoading(true);
+    try {
+      const res = await api.listConversations({ offset, limit: 10, search: search || undefined, api_key_id: keyId || undefined });
+      setConversations(res.conversations);
+      setConvTotal(res.total);
+      setConvOffset(offset);
+    } catch {} finally { setConvLoading(false); }
+  };
+  const viewConversation = async (id: string) => {
+    try { setSelectedConv(await api.getConversation(id)); } catch {}
+  };
+  const deleteConversation = async (id: string) => {
+    if (!confirm('Delete this conversation log?')) return;
+    try { await api.deleteConversation(id); loadConversations(); setSelectedConv(null); } catch {}
+  };
 
   const deleteUser = async (id: string) => { if (!confirm('Delete this user?')) return; await api.deleteUser(id); loadUsers(); };
   const approveUser = async (id: string) => { await api.approveUser(id); loadUsers(); };
@@ -107,6 +135,7 @@ export default function Admin() {
     { key: 'usage', label: 'Usage' },
     { key: 'pool', label: 'Token Pool' },
     { key: 'accounts', label: 'Kiro Accounts' },
+    { key: 'conversations', label: 'Conversations' },
   ];
 
   return (
@@ -354,6 +383,136 @@ export default function Admin() {
               </Table>
             ) : (
               <p className="text-sm text-muted-foreground">No Kiro accounts configured</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === 'conversations' && (
+        <Card className="backdrop-blur-xl border-border/50 shadow-sm">
+          <CardHeader>
+            <CardTitle>Conversations</CardTitle>
+            <CardDescription>API request/response logs (requires ENABLE_CONVERSATION_LOG=true)</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Search content..."
+                value={convSearch}
+                onChange={e => setConvSearch(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { setConvOffset(0); loadConversations(0, convSearch, convKeyFilter); } }}
+                className="max-w-xs"
+              />
+              <Input
+                placeholder="Filter by API Key ID..."
+                value={convKeyFilter}
+                onChange={e => setConvKeyFilter(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { setConvOffset(0); loadConversations(0, convSearch, convKeyFilter); } }}
+                className="max-w-xs"
+              />
+              <Button variant="outline" size="sm" onClick={() => { setConvOffset(0); loadConversations(0, convSearch, convKeyFilter); }}>
+                Search
+              </Button>
+            </div>
+
+            {convLoading ? (
+              <p className="text-sm text-muted-foreground">Loading...</p>
+            ) : conversations.length > 0 ? (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Time</TableHead>
+                      <TableHead>User</TableHead>
+                      <TableHead>Model</TableHead>
+                      <TableHead>API</TableHead>
+                      <TableHead>Stream</TableHead>
+                      <TableHead>Tokens</TableHead>
+                      <TableHead>Duration</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {conversations.map(c => (
+                      <TableRow key={c.id} className="cursor-pointer" onClick={() => viewConversation(c.id)}>
+                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                          {new Date(c.created_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-sm">{c.user_email || c.user_id?.slice(0, 8)}</TableCell>
+                        <TableCell><Badge variant="outline">{c.model}</Badge></TableCell>
+                        <TableCell><Badge variant="secondary">{c.api_type}</Badge></TableCell>
+                        <TableCell className="text-sm">{c.is_stream ? 'Yes' : 'No'}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {formatNumber(c.input_tokens)} / {formatNumber(c.output_tokens)}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {c.duration_ms ? `${c.duration_ms}ms` : '—'}
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); deleteConversation(c.id); }}>
+                            Delete
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>{convOffset + 1}–{Math.min(convOffset + 10, convTotal)} of {convTotal}</span>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" disabled={convOffset === 0}
+                      onClick={() => loadConversations(Math.max(0, convOffset - 10))}>
+                      Prev
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={convOffset + 10 >= convTotal}
+                      onClick={() => loadConversations(convOffset + 10)}>
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">No conversation logs found</p>
+            )}
+
+            {selectedConv && (
+              <Card className="mt-4 border-primary/30">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base">
+                      {selectedConv.model} — {new Date(selectedConv.created_at).toLocaleString()}
+                    </CardTitle>
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedConv(null)}>Close</Button>
+                  </div>
+                  <CardDescription>
+                    {selectedConv.api_type} | {selectedConv.is_stream ? 'streaming' : 'non-streaming'} | {selectedConv.duration_ms}ms | Key: {selectedConv.key_prefix || '—'}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {selectedConv.request_headers && (
+                    <details>
+                      <summary className="text-sm font-medium cursor-pointer text-muted-foreground">Request Headers</summary>
+                      <pre className="mt-1 p-2 bg-muted/50 rounded text-xs overflow-auto max-h-40">
+                        {JSON.stringify(JSON.parse(selectedConv.request_headers), null, 2)}
+                      </pre>
+                    </details>
+                  )}
+                  <details open>
+                    <summary className="text-sm font-medium cursor-pointer">Request Body</summary>
+                    <pre className="mt-1 p-2 bg-muted/50 rounded text-xs overflow-auto max-h-96">
+                      {(() => { try { return JSON.stringify(JSON.parse(selectedConv.request_body), null, 2); } catch { return selectedConv.request_body; } })()}
+                    </pre>
+                  </details>
+                  {selectedConv.response_body && (
+                    <details open>
+                      <summary className="text-sm font-medium cursor-pointer">Response Body</summary>
+                      <pre className="mt-1 p-2 bg-muted/50 rounded text-xs overflow-auto max-h-96">
+                        {(() => { try { return JSON.stringify(JSON.parse(selectedConv.response_body), null, 2); } catch { return selectedConv.response_body; } })()}
+                      </pre>
+                    </details>
+                  )}
+                </CardContent>
+              </Card>
             )}
           </CardContent>
         </Card>

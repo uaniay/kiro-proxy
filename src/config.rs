@@ -56,6 +56,9 @@ pub struct Config {
 
     // Truncation recovery
     pub truncation_recovery: bool,
+
+    // Conversation logging
+    pub enable_conversation_log: bool,
 }
 
 impl std::fmt::Debug for Config {
@@ -108,6 +111,9 @@ impl Config {
             fake_reasoning_max_tokens: 4000,
             fake_reasoning_handling: FakeReasoningHandling::AsReasoningContent,
             truncation_recovery: true,
+            enable_conversation_log: std::env::var("ENABLE_CONVERSATION_LOG")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
         };
 
         Ok(config)
@@ -137,6 +143,7 @@ impl Config {
             fake_reasoning_max_tokens: 4000,
             fake_reasoning_handling: FakeReasoningHandling::AsReasoningContent,
             truncation_recovery: true,
+            enable_conversation_log: false,
         }
     }
 

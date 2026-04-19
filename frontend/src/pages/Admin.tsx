@@ -18,7 +18,7 @@ type Tab = 'users' | 'usage' | 'pool' | 'accounts' | 'conversations';
 export default function Admin() {
   const [searchParams] = useSearchParams();
   const initialTab = (searchParams.get('tab') as Tab) || 'users';
-  const initialKeyFilter = searchParams.get('api_key_id') || '';
+  const initialKeyFilter = searchParams.get('key_prefix') || '';
   const [tab, setTab] = useState<Tab>(initialTab);
   const [users, setUsers] = useState<any[]>([]);
   const [pool, setPool] = useState<any[]>([]);

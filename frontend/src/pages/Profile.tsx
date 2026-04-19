@@ -126,7 +126,7 @@ export default function Profile({ user, onLogout }: { user: any; onLogout: () =>
                     <TableCell className="text-muted-foreground text-sm">{k.last_used ? new Date(k.last_used).toLocaleDateString() : 'Never'}</TableCell>
                     <TableCell className="flex gap-1">
                       {user.role === 'admin' && (
-                        <Button variant="ghost" size="sm" onClick={() => navigate(`/admin?tab=conversations&api_key_id=${k.id}`)}>Logs</Button>
+                        <Button variant="ghost" size="sm" onClick={() => navigate(`/admin?tab=conversations&key_prefix=${k.key_prefix}`)}>Logs</Button>
                       )}
                       <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteKey(k.id)}>Delete</Button>
                     </TableCell>

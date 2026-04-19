@@ -53,7 +53,7 @@ export const api = {
   togglePoolAllowed: (id: string, allowed: boolean) =>
     request(`/admin/users/${id}/pool-allowed`, { method: 'POST', body: JSON.stringify({ allowed }) }),
   listConversations: (params?: {
-    api_key_id?: string; user_id?: string; model?: string;
+    key_prefix?: string; user_id?: string; model?: string;
     search?: string; offset?: number; limit?: number;
   }) => {
     const qs = new URLSearchParams();

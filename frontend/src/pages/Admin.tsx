@@ -51,7 +51,7 @@ export default function Admin() {
   const loadConversations = async (offset = convOffset, search = convSearch, keyId = convKeyFilter) => {
     setConvLoading(true);
     try {
-      const res = await api.listConversations({ offset, limit: 10, search: search || undefined, api_key_id: keyId || undefined });
+      const res = await api.listConversations({ offset, limit: 10, search: search || undefined, key_prefix: keyId || undefined });
       setConversations(res.conversations);
       setConvTotal(res.total);
       setConvOffset(offset);

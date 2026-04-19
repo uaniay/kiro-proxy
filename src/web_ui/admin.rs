@@ -550,7 +550,7 @@ pub async fn list_conversations_handler(
 
     let (logs, total) = db::list_conversation_logs(
         db_pool,
-        query.get("api_key_id").map(String::as_str),
+        query.get("key_prefix").map(String::as_str),
         query.get("user_id").map(String::as_str),
         query.get("model").map(String::as_str),
         query.get("search").map(String::as_str),

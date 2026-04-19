@@ -595,7 +595,7 @@ pub async fn record_conversation(
 
 pub async fn list_conversation_logs(
     pool: &SqlitePool,
-    api_key_id: Option<&str>,
+    key_prefix: Option<&str>,
     user_id: Option<&str>,
     model: Option<&str>,
     search: Option<&str>,
@@ -605,9 +605,9 @@ pub async fn list_conversation_logs(
     let mut where_clauses = Vec::new();
     let mut binds: Vec<String> = Vec::new();
 
-    if let Some(v) = api_key_id {
-        where_clauses.push("c.api_key_id = ?");
-        binds.push(v.to_string());
+    if let Some(v) = key_prefix {
+        where_clauses.push("k.key_prefix LIKE ?");
+        binds.push(format!("{}%", v));
     }
     if let Some(v) = user_id {
         where_clauses.push("c.user_id = ?");
@@ -631,7 +631,9 @@ pub async fn list_conversation_logs(
     };
 
     let count_sql = format!(
-        "SELECT COUNT(*) as cnt FROM conversation_logs c {}",
+        "SELECT COUNT(*) as cnt FROM conversation_logs c \
+         LEFT JOIN api_keys k ON c.api_key_id = k.id \
+         {}",
         where_sql
     );
     let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);

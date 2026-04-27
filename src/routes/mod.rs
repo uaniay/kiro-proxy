@@ -1,5 +1,6 @@
 mod anthropic;
 mod openai;
+mod responses;
 pub mod state;
 
 pub use state::{AppState, KiroCreds};
@@ -62,6 +63,10 @@ pub fn openai_routes(state: AppState) -> Router {
         .route(
             "/v1/chat/completions",
             post(openai::chat_completions_handler),
+        )
+        .route(
+            "/v1/responses",
+            post(responses::responses_handler),
         )
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),

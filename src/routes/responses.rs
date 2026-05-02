@@ -53,6 +53,11 @@ pub(crate) async fn responses_handler(
         auth.get_profile_arn().await.unwrap_or_default()
     };
 
+    // Lazy-load model cache on first request if empty
+    if state.model_cache.is_empty() {
+        state.model_cache.refresh_with_token(&state.http_client, &creds.access_token, &creds.region).await;
+    }
+
     let model_id = state.model_cache.resolve(&request.model);
     let kiro_result = responses_to_kiro::build_kiro_payload(&request, &conversation_id, &profile_arn, &config, Some(&model_id))
         .map_err(ApiError::ValidationError)?;

@@ -37,7 +37,7 @@ static MODEL_ALIASES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::
     let mut m = HashMap::new();
     // NOTE: Kiro API now supports 4.6 models natively, no aliases needed.
     // Only add aliases here when Kiro doesn't yet support a newer model version.
-    m.insert("claude-opus-4.7",   "claude-opus-4.6");
+    m.insert("claude-opus-4-7",   "claude-opus-4-6");
     m
 });
 
@@ -50,7 +50,7 @@ pub fn normalize_model_name(name: &str) -> String {
     let normalized = if let Some(caps) = STANDARD_PATTERN.captures(&name_lower) {
         let base = caps.get(1).unwrap().as_str();
         let minor = caps.get(2).unwrap().as_str();
-        format!("{}.{}", base, minor)
+        format!("{}-{}", base, minor)
     } else if let Some(caps) = NO_MINOR_PATTERN.captures(&name_lower) {
         caps.get(1).unwrap().as_str().to_string()
     } else if let Some(caps) = LEGACY_PATTERN.captures(&name_lower) {
@@ -58,7 +58,7 @@ pub fn normalize_model_name(name: &str) -> String {
         let major = caps.get(2).unwrap().as_str();
         let minor = caps.get(3).unwrap().as_str();
         let family = caps.get(4).unwrap().as_str();
-        format!("{}-{}.{}-{}", prefix, major, minor, family)
+        format!("{}-{}-{}-{}", prefix, major, minor, family)
     } else if let Some(caps) = DOT_WITH_DATE_PATTERN.captures(&name_lower) {
         caps.get(1).unwrap().as_str().to_string()
     } else if name_lower.starts_with("claude") || name_lower == "auto" {
@@ -67,6 +67,9 @@ pub fn normalize_model_name(name: &str) -> String {
         tracing::warn!(original = %name, "Unrecognized model name, defaulting to auto");
         "auto".to_string()
     };
+
+    // Kiro API uses hyphen-separated model names (e.g. claude-sonnet-4-6)
+    let normalized = normalized.replace('.', "-");
 
     if let Some(&alias) = MODEL_ALIASES.get(normalized.as_str()) {
         tracing::info!(original = %name, mapped_to = %alias, "Model alias applied");

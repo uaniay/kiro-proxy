@@ -300,6 +300,7 @@ pub fn build_kiro_payload(
     conversation_id: &str,
     profile_arn: &str,
     config: &Config,
+    model_id_override: Option<&str>,
 ) -> Result<KiroPayloadResult, String> {
     // Convert messages to unified format
     let (system_prompt, unified_messages) = convert_openai_messages_to_unified(&request.messages);
@@ -307,8 +308,10 @@ pub fn build_kiro_payload(
     // Convert tools to unified format
     let unified_tools = convert_openai_tools_to_unified(&request.tools);
 
-    // Normalize model name
-    let model_id = normalize_model_name(&request.model);
+    // Use override if provided, otherwise normalize
+    let model_id = model_id_override
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| normalize_model_name(&request.model));
 
     debug!(
         "Converting OpenAI request: model={} -> {}, messages={}, tools={}, system_prompt_length={}",

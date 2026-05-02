@@ -7,6 +7,7 @@ use dashmap::DashMap;
 use crate::auth::AuthManager;
 use crate::config::Config;
 use crate::http_client::KiroHttpClient;
+use crate::model_cache::ModelCache;
 use crate::pool::PoolScheduler;
 
 /// Kiro credentials injected into request extensions by auth middleware.
@@ -35,4 +36,6 @@ pub struct AppState {
     pub pool_scheduler: Arc<PoolScheduler>,
     /// Whether the global Kiro account (env var) is enabled
     pub global_kiro_enabled: Arc<AtomicBool>,
+    /// Cache of valid Kiro model IDs from ListAvailableModels
+    pub model_cache: ModelCache,
 }

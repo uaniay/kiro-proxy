@@ -356,6 +356,7 @@ pub fn build_kiro_payload(
     conversation_id: &str,
     profile_arn: &str,
     config: &Config,
+    model_id_override: Option<&str>,
 ) -> Result<super::core::KiroPayloadResult, String> {
     // Convert messages to unified format
     let unified_messages = convert_anthropic_messages(&request.messages);
@@ -366,8 +367,10 @@ pub fn build_kiro_payload(
     // System prompt is already separate in Anthropic format
     let system_prompt = extract_system_prompt(&request.system);
 
-    // Normalize model name
-    let model_id = normalize_model_name(&request.model);
+    // Use override if provided, otherwise normalize
+    let model_id = model_id_override
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| normalize_model_name(&request.model));
 
     debug!(
         "Converting Anthropic request: model={} -> {}, messages={}, tools={}, system_prompt_length={}",

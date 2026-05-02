@@ -74,7 +74,8 @@ pub(crate) async fn chat_completions_handler(
         auth.get_profile_arn().await.unwrap_or_default()
     };
 
-    let kiro_result = build_kiro_payload(&request, &conversation_id, &profile_arn, &config)
+    let model_id = state.model_cache.resolve(&request.model);
+    let kiro_result = build_kiro_payload(&request, &conversation_id, &profile_arn, &config, Some(&model_id))
         .map_err(ApiError::ValidationError)?;
 
     let kiro_api_url = format!(
@@ -84,7 +85,13 @@ pub(crate) async fn chat_completions_handler(
 
     info!(
         original_model = %request.model,
-        kiro_model = %kiro_result.payload.get("modelId").and_then(|v| v.as_str()).unwrap_or("unknown"),
+        kiro_model = %kiro_result.payload
+            .get("conversationState")
+            .and_then(|s| s.get("currentMessage"))
+            .and_then(|m| m.get("userInputMessage"))
+            .and_then(|u| u.get("modelId"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown"),
         user_id = %creds.user_id.as_deref().unwrap_or("unknown"),
         api_key_id = %creds.api_key_id.as_deref().unwrap_or("unknown"),
         region = %creds.region,

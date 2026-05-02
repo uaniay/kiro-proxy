@@ -278,11 +278,14 @@ pub fn build_kiro_payload(
     conversation_id: &str,
     profile_arn: &str,
     config: &Config,
+    model_id_override: Option<&str>,
 ) -> Result<KiroPayloadResult, String> {
     let system_prompt = request.instructions.clone().unwrap_or_default();
     let unified_messages = convert_responses_input_to_unified(&request.input);
     let unified_tools = convert_responses_tools_to_unified(&request.tools);
-    let model_id = normalize_model_name(&request.model);
+    let model_id = model_id_override
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| normalize_model_name(&request.model));
 
     debug!(
         "Converting Responses API request: model={} -> {}, input_items={}, tools={}, instructions_len={}",

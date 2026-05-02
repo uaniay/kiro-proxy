@@ -9,6 +9,7 @@ mod db;
 mod error;
 mod http_client;
 mod middleware;
+mod model_cache;
 mod models;
 mod pool;
 mod routes;
@@ -79,17 +80,41 @@ async fn main() -> Result<()> {
         None
     };
 
+    let model_cache = model_cache::ModelCache::new();
+
     let state = routes::AppState {
         proxy_api_key_hash,
-        auth_manager,
-        http_client,
+        auth_manager: auth_manager.clone(),
+        http_client: http_client.clone(),
         config: Arc::new(RwLock::new(config.clone())),
         db: db_pool,
         api_key_cache: Arc::new(dashmap::DashMap::new()),
         kiro_token_cache: Arc::new(dashmap::DashMap::new()),
         pool_scheduler: Arc::new(pool::PoolScheduler::new()),
         global_kiro_enabled: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+        model_cache: model_cache.clone(),
     };
+
+    // Populate model cache on startup (best-effort)
+    {
+        let auth = auth_manager.read().await;
+        model_cache.refresh(&http_client, &auth).await;
+    }
+
+    // Background model cache refresh every 6 hours
+    {
+        let cache = model_cache.clone();
+        let client = http_client.clone();
+        let mgr = auth_manager.clone();
+        tokio::spawn(async move {
+            let interval = std::time::Duration::from_secs(6 * 60 * 60);
+            loop {
+                tokio::time::sleep(interval).await;
+                let auth = mgr.read().await;
+                cache.refresh(&client, &auth).await;
+            }
+        });
+    }
 
     // Router
     let mut app = routes::health_routes()

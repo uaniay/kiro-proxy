@@ -35,9 +35,9 @@ static DOT_WITH_DATE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 // Update this table when Kiro adds support for new models.
 static MODEL_ALIASES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     let mut m = HashMap::new();
+    // NOTE: Kiro API now supports 4.6 models natively, no aliases needed.
+    // Only add aliases here when Kiro doesn't yet support a newer model version.
     m.insert("claude-opus-4.7",   "claude-opus-4.6");
-    m.insert("claude-sonnet-4.6", "claude-sonnet-4.5");
-    m.insert("claude-haiku-4.6",  "claude-haiku-4.5");
     m
 });
 

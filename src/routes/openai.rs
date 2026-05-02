@@ -13,6 +13,7 @@ use crate::error::ApiError;
 use crate::models::openai::{ChatCompletionRequest, ModelList, OpenAIModel};
 use crate::routes::state::{AppState, KiroCreds};
 use crate::tokenizer::count_message_tokens;
+use tracing::info;
 
 pub(crate) async fn get_models_handler() -> Result<Json<ModelList>, ApiError> {
     // Static model list for proxy mode
@@ -79,6 +80,15 @@ pub(crate) async fn chat_completions_handler(
     let kiro_api_url = format!(
         "https://codewhisperer.{}.amazonaws.com/generateAssistantResponse",
         creds.region
+    );
+
+    info!(
+        original_model = %request.model,
+        kiro_model = %kiro_result.payload.get("modelId").and_then(|v| v.as_str()).unwrap_or("unknown"),
+        user_id = %creds.user_id.as_deref().unwrap_or("unknown"),
+        api_key_id = %creds.api_key_id.as_deref().unwrap_or("unknown"),
+        region = %creds.region,
+        "Forwarding to Kiro API"
     );
 
     let req = state

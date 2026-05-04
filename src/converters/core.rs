@@ -80,8 +80,8 @@ pub fn normalize_model_name(name: &str) -> String {
     } else if name_lower.starts_with("claude") || name_lower == "auto" {
         name.to_string()
     } else {
-        tracing::warn!(original = %name, "Unrecognized model name, defaulting to glm-5");
-        "glm-5".to_string()
+        tracing::warn!(original = %name, "Unrecognized model name, defaulting to qwen3-coder-next");
+        "qwen3-coder-next".to_string()
     };
 
     if let Some(&alias) = MODEL_ALIASES.get(normalized.as_str()) {

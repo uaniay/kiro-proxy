@@ -265,14 +265,83 @@ curl http://localhost:9199/v1/models
 
 ## 可用模型
 
+### Claude 模型
+
 | 模型 | 说明 |
 |------|------|
 | `claude-sonnet-4` | Claude Sonnet 4 |
 | `claude-sonnet-4-5` | Claude Sonnet 4.5 |
+| `claude-sonnet-4-6` | Claude Sonnet 4.6 |
 | `claude-haiku-4` | Claude Haiku 4 |
 | `claude-haiku-4-5` | Claude Haiku 4.5 |
+| `claude-haiku-4-6` | Claude Haiku 4.6 |
 | `claude-opus-4` | Claude Opus 4 |
 | `claude-opus-4-6` | Claude Opus 4.6 |
+| `claude-opus-4-7` | Claude Opus 4.7 |
+
+### 非 Claude 模型
+
+| 模型 | 说明 | Credit 倍率 |
+|------|------|-------------|
+| `deepseek-v3.2` | DeepSeek V3.2 实验预览版 | 0.25x |
+| `minimax-m2.5` | MiniMax M2.5 模型 | 0.25x |
+| `minimax-m2.1` | MiniMax M2.1 实验预览版 | 0.15x |
+| `glm-5` | GLM-5 模型 | 0.5x |
+| `qwen3-coder-next` | Qwen3 Coder Next 实验预览版 | 0.05x |
+
+### 模型调用示例
+
+**Deepseek V3.2：**
+
+```bash
+curl http://localhost:9199/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek-v3.2",
+    "messages": [{"role": "user", "content": "你好！"}],
+    "stream": true
+  }'
+```
+
+**MiniMax M2.5：**
+
+```bash
+curl http://localhost:9199/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "minimax-m2.5",
+    "messages": [{"role": "user", "content": "你好！"}],
+    "stream": true
+  }'
+```
+
+**GLM-5：**
+
+```bash
+curl http://localhost:9199/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "glm-5",
+    "messages": [{"role": "user", "content": "你好！"}],
+    "stream": true
+  }'
+```
+
+**Qwen3 Coder Next：**
+
+```bash
+curl http://localhost:9199/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "你好！"}],
+    "stream": true
+  }'
+```
 
 ## API 端点
 

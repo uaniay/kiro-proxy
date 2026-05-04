@@ -265,14 +265,83 @@ curl http://localhost:9199/v1/models
 
 ## Available Models
 
+### Claude Models
+
 | Model | Description |
 |-------|-------------|
 | `claude-sonnet-4` | Claude Sonnet 4 |
 | `claude-sonnet-4-5` | Claude Sonnet 4.5 |
+| `claude-sonnet-4-6` | Claude Sonnet 4.6 |
 | `claude-haiku-4` | Claude Haiku 4 |
 | `claude-haiku-4-5` | Claude Haiku 4.5 |
+| `claude-haiku-4-6` | Claude Haiku 4.6 |
 | `claude-opus-4` | Claude Opus 4 |
 | `claude-opus-4-6` | Claude Opus 4.6 |
+| `claude-opus-4-7` | Claude Opus 4.7 |
+
+### Non-Claude Models
+
+| Model | Description | Credit Multiplier |
+|-------|-------------|-------------------|
+| `deepseek-v3.2` | Experimental preview of DeepSeek V3.2 | 0.25x |
+| `minimax-m2.5` | The MiniMax M2.5 model | 0.25x |
+| `minimax-m2.1` | Experimental preview of MiniMax M2.1 | 0.15x |
+| `glm-5` | The GLM-5 model | 0.5x |
+| `qwen3-coder-next` | Experimental preview of Qwen3 Coder Next | 0.05x |
+
+### Model Usage Examples
+
+**Deepseek V3.2:**
+
+```bash
+curl http://localhost:9199/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek-v3.2",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "stream": true
+  }'
+```
+
+**MiniMax M2.5:**
+
+```bash
+curl http://localhost:9199/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "minimax-m2.5",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "stream": true
+  }'
+```
+
+**GLM-5:**
+
+```bash
+curl http://localhost:9199/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "glm-5",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "stream": true
+  }'
+```
+
+**Qwen3 Coder Next:**
+
+```bash
+curl http://localhost:9199/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "stream": true
+  }'
+```
 
 ## API Endpoints
 

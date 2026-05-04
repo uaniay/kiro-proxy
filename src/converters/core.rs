@@ -41,12 +41,28 @@ static MODEL_ALIASES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::
     m
 });
 
+// Known non-Claude model prefixes supported by Kiro
+static KNOWN_NON_CLAUDE_MODELS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    vec![
+        "deepseek-",
+        "minimax-",
+        "glm-",
+        "qwen",
+    ]
+});
+
 /// Normalize model name to Kiro format
 pub fn normalize_model_name(name: &str) -> String {
     if name.is_empty() {
         return name.to_string();
     }
     let name_lower = name.to_lowercase();
+
+    // Pass through known non-Claude models as-is
+    if KNOWN_NON_CLAUDE_MODELS.iter().any(|prefix| name_lower.starts_with(prefix)) {
+        return name_lower;
+    }
+
     let normalized = if let Some(caps) = STANDARD_PATTERN.captures(&name_lower) {
         let base = caps.get(1).unwrap().as_str();
         let minor = caps.get(2).unwrap().as_str();

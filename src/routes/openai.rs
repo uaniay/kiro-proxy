@@ -18,6 +18,7 @@ use tracing::info;
 pub(crate) async fn get_models_handler() -> Result<Json<ModelList>, ApiError> {
     // Static model list for proxy mode
     let models = vec![
+        // Claude models
         OpenAIModel::new("claude-sonnet-4".to_string()),
         OpenAIModel::new("claude-sonnet-4-5".to_string()),
         OpenAIModel::new("claude-sonnet-4-6".to_string()),
@@ -27,6 +28,15 @@ pub(crate) async fn get_models_handler() -> Result<Json<ModelList>, ApiError> {
         OpenAIModel::new("claude-opus-4".to_string()),
         OpenAIModel::new("claude-opus-4-6".to_string()),
         OpenAIModel::new("claude-opus-4-7".to_string()),
+        // Deepseek models
+        OpenAIModel::new("deepseek-v3.2".to_string()),
+        // MiniMax models
+        OpenAIModel::new("minimax-m2.5".to_string()),
+        OpenAIModel::new("minimax-m2.1".to_string()),
+        // GLM models
+        OpenAIModel::new("glm-5".to_string()),
+        // Qwen models
+        OpenAIModel::new("qwen3-coder-next".to_string()),
     ];
     Ok(Json(ModelList::new(models)))
 }

@@ -58,9 +58,9 @@ pub fn normalize_model_name(name: &str) -> String {
     }
     let name_lower = name.to_lowercase();
 
-    // Pass through known non-Claude models as-is
+    // Pass through known non-Claude models, replacing dots with dashes to match Kiro naming
     if KNOWN_NON_CLAUDE_MODELS.iter().any(|prefix| name_lower.starts_with(prefix)) {
-        return name_lower;
+        return name_lower.replace('.', "-");
     }
 
     let normalized = if let Some(caps) = STANDARD_PATTERN.captures(&name_lower) {
@@ -80,8 +80,8 @@ pub fn normalize_model_name(name: &str) -> String {
     } else if name_lower.starts_with("claude") || name_lower == "auto" {
         name.to_string()
     } else {
-        tracing::warn!(original = %name, "Unrecognized model name, defaulting to auto");
-        "auto".to_string()
+        tracing::warn!(original = %name, "Unrecognized model name, defaulting to glm-5");
+        "glm-5".to_string()
     };
 
     if let Some(&alias) = MODEL_ALIASES.get(normalized.as_str()) {

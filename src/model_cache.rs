@@ -32,11 +32,14 @@ impl ModelCache {
     pub fn resolve(&self, name: &str) -> String {
         let normalized = normalize_model_name(name);
         if let Some(id) = self.inner.get(&normalized) {
+            tracing::info!(original = %name, normalized = %normalized, resolved = %id.value(), "ModelCache: resolved via normalized key");
             return id.clone();
         }
         if let Some(id) = self.inner.get(name) {
+            tracing::info!(original = %name, resolved = %id.value(), "ModelCache: resolved via original key");
             return id.clone();
         }
+        tracing::warn!(original = %name, normalized = %normalized, cache_size = self.inner.len(), "ModelCache: no match found, using normalized name as fallback");
         normalized
     }
 
@@ -113,8 +116,9 @@ impl ModelCache {
                 let mut count = 0;
                 for model in &models {
                     if let Some(model_id) = model.get("modelId").and_then(|v| v.as_str()) {
-                        self.inner.insert(model_id.to_string(), model_id.to_string());
                         let normalized = normalize_model_name(model_id);
+                        tracing::info!("ModelCache: model_id={}, normalized={}", model_id, normalized);
+                        self.inner.insert(model_id.to_string(), model_id.to_string());
                         self.inner.insert(normalized, model_id.to_string());
                         count += 1;
                     }

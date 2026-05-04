@@ -283,9 +283,9 @@ curl http://localhost:9199/v1/models
 
 | Model | Description | Credit Multiplier |
 |-------|-------------|-------------------|
-| `deepseek-v3.2` | Experimental preview of DeepSeek V3.2 | 0.25x |
-| `minimax-m2.5` | The MiniMax M2.5 model | 0.25x |
-| `minimax-m2.1` | Experimental preview of MiniMax M2.1 | 0.15x |
+| `deepseek-v3-2` | Experimental preview of DeepSeek V3.2 | 0.25x |
+| `minimax-m2-5` | The MiniMax M2.5 model | 0.25x |
+| `minimax-m2-1` | Experimental preview of MiniMax M2.1 | 0.15x |
 | `glm-5` | The GLM-5 model | 0.5x |
 | `qwen3-coder-next` | Experimental preview of Qwen3 Coder Next | 0.05x |
 
@@ -298,7 +298,7 @@ curl http://localhost:9199/v1/chat/completions \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "deepseek-v3.2",
+    "model": "deepseek-v3-2",
     "messages": [{"role": "user", "content": "Hello!"}],
     "stream": true
   }'
@@ -311,7 +311,7 @@ curl http://localhost:9199/v1/chat/completions \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "minimax-m2.5",
+    "model": "minimax-m2-5",
     "messages": [{"role": "user", "content": "Hello!"}],
     "stream": true
   }'
